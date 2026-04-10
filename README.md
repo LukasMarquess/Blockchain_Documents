@@ -265,6 +265,7 @@ Terminal 3 (Minerador 2):
    ├─ Minerador 1: Inicia PoW (cálculo de hash)
    ├─ Minerador 2: Inicia PoW (concorrência)
    ├─ Minerador 3: Inicia PoW (concorrência)
+   ├─ Minerador 4: Inicia PoW (concorrência)
    └─ O primeiro a encontrar hash válido vence
 
 5. VALIDAÇÃO E CONSENSO
