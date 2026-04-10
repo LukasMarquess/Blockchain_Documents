@@ -395,25 +395,12 @@ Exemplo de estrutura JSON de um bloco:
 
 ---
 
-## 📈 Possíveis Melhorias Futuras
-
-- [ ] Implementar merkle tree para múltiplas transações por bloco
-- [ ] Sistema de recompensas para mineradores
-- [ ] Contratos inteligentes (smart contracts)
-- [ ] Interface web para visualização da blockchain
-- [ ] Persistência em banco de dados
-- [ ] Algoritmo de consenso PoS (Proof of Stake)
-- [ ] Criptografia end-to-end entre nós
-- [ ] Sistema de permissões e controle de acesso
-
----
-
 ## 👨‍💻 Autor e Contexto
 
 **Projeto**: Sistema de Blockchain Distribuído com Assinatura Digital  
 **Propósito**: Educacional - Demonstração de conceitos de sistemas distribuídos  
 **Tecnologia**: Sistemas Distribuídos e Criptografia  
-**Data**: Março de 2026
+**Data**: Março de 2026  
 **Autores**: Diego Rabelo, Lucas Marques e Nilton Barreto  
 **Professor**: Eduardo Galvão Lucena  
 **Disciplina**: Sistemas Distribuídos - DCA3704
