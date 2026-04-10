@@ -414,6 +414,9 @@ Exemplo de estrutura JSON de um bloco:
 **Propósito**: Educacional - Demonstração de conceitos de sistemas distribuídos  
 **Tecnologia**: Sistemas Distribuídos e Criptografia  
 **Data**: Março de 2026
+**Autores**: Diego Rabelo, Lucas Marques e Nilton Barreto  
+**Professor**: Eduardo Galvão Lucena  
+**Disciplina**: Sistemas Distribuídos - DCA3704
 
 ---
 
