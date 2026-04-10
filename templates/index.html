@@ -199,6 +199,137 @@
             margin-top: 8px;
         }
 
+        .cadeia-area {
+            margin-top: 16px;
+            padding: 14px;
+            border: 2px dashed #8ea0ff;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #f8f9ff 0%, #eef1ff 100%);
+        }
+
+        .cadeia-titulo {
+            font-size: 1em;
+            font-weight: 700;
+            color: #4b5ed7;
+            margin-bottom: 10px;
+        }
+
+        .cadeia-trilho {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            overflow-x: auto;
+            padding-bottom: 4px;
+            min-height: 74px;
+        }
+
+        .cadeia-bloco {
+            min-width: 110px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #6f82ff 0%, #5f6fe3 100%);
+            color: white;
+            text-align: center;
+            box-shadow: 0 5px 14px rgba(95, 111, 227, 0.35);
+            font-weight: 700;
+            animation: bloco-pop 0.4s ease;
+        }
+
+        .cadeia-bloco.novo {
+            animation: bloco-novo 1.1s ease;
+        }
+
+        .cadeia-conector {
+            flex: 0 0 34px;
+            height: 4px;
+            border-radius: 999px;
+            background: linear-gradient(90deg, #96a6ff 0%, #7d8ef2 100%);
+        }
+
+        .disseminacao-box {
+            margin-top: 12px;
+            border-radius: 10px;
+            background: #ffffff;
+            border: 1px solid #d8deff;
+            padding: 10px;
+        }
+
+        .disseminacao-header {
+            font-size: 0.92em;
+            color: #3f4eb5;
+            margin-bottom: 8px;
+            font-weight: 700;
+        }
+
+        .disseminacao-linha {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9em;
+        }
+
+        .tag-origem,
+        .tag-destino {
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-weight: 700;
+            color: #fff;
+            white-space: nowrap;
+        }
+
+        .tag-origem {
+            background: #5b74f5;
+        }
+
+        .tag-destino {
+            background: #7b88d9;
+        }
+
+        .seta-disseminacao {
+            font-weight: 700;
+            color: #6f7ed8;
+        }
+
+        .pulso-disseminacao {
+            animation: pulse-share 1.3s ease;
+        }
+
+        @keyframes bloco-pop {
+            from {
+                opacity: 0;
+                transform: scale(0.9) translateY(8px);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+            }
+        }
+
+        @keyframes bloco-novo {
+            0% {
+                transform: scale(0.92);
+                box-shadow: 0 0 0 rgba(97, 115, 237, 0.0);
+            }
+            45% {
+                transform: scale(1.05);
+                box-shadow: 0 0 18px rgba(97, 115, 237, 0.55);
+            }
+            100% {
+                transform: scale(1);
+                box-shadow: 0 5px 14px rgba(95, 111, 227, 0.35);
+            }
+        }
+
+        @keyframes pulse-share {
+            0% {
+                box-shadow: 0 0 0 0 rgba(111, 126, 216, 0.45);
+            }
+            100% {
+                box-shadow: 0 0 0 10px rgba(111, 126, 216, 0);
+            }
+        }
+
         .timestamp {
             font-size: 0.8em;
             opacity: 0.7;
@@ -299,9 +430,23 @@
 
             <!-- Blocos Minerados -->
             <div class="card full-width">
-                <h2>⛏️ Blocos Minerados (Disseminação via Kafka)</h2>
+                <h2>⛏️ Blocos Minerados</h2>
                 <div class="blocos-container" id="blocos-container">
                     <div class="vazio-mensagem">Aguardando mineração do primeiro bloco...</div>
+                </div>
+
+                <div class="cadeia-area">
+                    <div class="cadeia-titulo">Cadeia em crescimento</div>
+                    <div class="cadeia-trilho" id="cadeia-trilho">
+                        <div class="vazio-mensagem">Nenhum bloco na cadeia ainda...</div>
+                    </div>
+
+                    <div class="disseminacao-box pulso-disseminacao" id="disseminacao-box">
+                        <div class="disseminacao-header">Disseminação do bloco vencedor</div>
+                        <div class="disseminacao-linha" id="disseminacao-linha">
+                            <span class="vazio-mensagem" style="padding:0;">Aguardando primeiro vencedor...</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -309,6 +454,8 @@
 
     <script>
         const socket = io();
+        const mineradoresPadrao = ['Minerador-1', 'Minerador-2', 'Minerador-3', 'Minerador-4'];
+        let ultimoIndiceAnimado = null;
         let estado = {
             mineradores: {},
             blocos_minerados: [],
@@ -323,6 +470,7 @@
         socket.on('estado_inicial', function(data) {
             console.log('Estado inicial recebido:', data);
             estado = data;
+            normalizarMineradores();
             atualizarUI();
         });
 
@@ -341,11 +489,14 @@
                 };
             }
             estado.mineradores[data.minerador].blocos_resolvidos += 1;
+            normalizarMineradores();
+            ultimoIndiceAnimado = data.indice;
             
             atualizarUI();
             
             // Efeito visual de vitória
             mostrarVencedor(data.minerador, data.indice);
+            animarDisseminacao(data.minerador, data.indice);
         });
 
         async function atualizarEstadoPorApi() {
@@ -356,6 +507,14 @@
 
                 estado.mineradores = dados.mineradores || {};
                 estado.blocos_minerados = dados.blocos_minerados || [];
+                normalizarMineradores();
+
+                const ultimo = obterUltimoBloco();
+                if (ultimo && ultimo.indice !== ultimoIndiceAnimado) {
+                    ultimoIndiceAnimado = ultimo.indice;
+                    animarDisseminacao(ultimo.minerador, ultimo.indice);
+                }
+
                 atualizarUI();
             } catch (err) {
                 console.warn('Falha ao atualizar estado via API:', err);
@@ -366,7 +525,32 @@
             atualizarMineradores();
             atualizarPlacar();
             atualizarBlocos();
+            atualizarCadeia();
             atualizarStatusServidor();
+        }
+
+        function normalizarMineradores() {
+            mineradoresPadrao.forEach((nome) => {
+                if (!estado.mineradores[nome]) {
+                    estado.mineradores[nome] = {
+                        nome,
+                        blocos_resolvidos: 0,
+                        status: 'ativo'
+                    };
+                }
+            });
+        }
+
+        function obterUltimoBloco() {
+            if (!estado.blocos_minerados || estado.blocos_minerados.length === 0) {
+                return null;
+            }
+
+            const ordenados = [...estado.blocos_minerados]
+                .filter((b) => Number.isFinite(Number(b.indice)))
+                .sort((a, b) => Number(a.indice) - Number(b.indice));
+
+            return ordenados.length ? ordenados[ordenados.length - 1] : null;
         }
 
         function atualizarMineradores() {
@@ -423,12 +607,58 @@
                         <span class="bloco-indice">Bloco #${bloco.indice}</span>
                         <span class="bloco-minerador">${bloco.minerador}</span>
                     </div>
-                    <div class="bloco-info">
-                        <strong>Nonce:</strong> ${bloco.nonce} | <strong>Hash:</strong> ${bloco.hash}...
-                    </div>
-                    <div class="timestamp">${new Date(bloco.timestamp).toLocaleTimeString('pt-BR')}</div>
+                    <div class="bloco-info"><strong>Vencedor:</strong> ${bloco.minerador}</div>
                 </div>
             `).join('');
+        }
+
+        function atualizarCadeia() {
+            const trilho = document.getElementById('cadeia-trilho');
+
+            if (!estado.blocos_minerados.length) {
+                trilho.innerHTML = '<div class="vazio-mensagem">Nenhum bloco na cadeia ainda...</div>';
+                return;
+            }
+
+            const ordenados = [...estado.blocos_minerados]
+                .filter((b) => Number.isFinite(Number(b.indice)))
+                .sort((a, b) => Number(a.indice) - Number(b.indice));
+
+            const todos = ordenados;
+            const partes = [];
+
+            todos.forEach((bloco, idx) => {
+                const novo = Number(bloco.indice) === Number(ultimoIndiceAnimado) ? 'novo' : '';
+                partes.push(`<div class="cadeia-bloco ${novo}">#${bloco.indice}</div>`);
+                if (idx < todos.length - 1) {
+                    partes.push('<div class="cadeia-conector"></div>');
+                }
+            });
+
+            trilho.innerHTML = partes.join('');
+            trilho.scrollLeft = trilho.scrollWidth;
+        }
+
+        function animarDisseminacao(mineradorVencedor, indiceBloco) {
+            const linha = document.getElementById('disseminacao-linha');
+            const box = document.getElementById('disseminacao-box');
+
+            const destinos = mineradoresPadrao.filter((nome) => nome !== mineradorVencedor);
+            const destinosHtml = destinos
+                .map((nome) => `<span class="tag-destino">${nome}</span>`)
+                .join('<span class="seta-disseminacao">→</span>');
+
+            linha.innerHTML = `
+                <span>Bloco #${indiceBloco}</span>
+                <span class="seta-disseminacao">:</span>
+                <span class="tag-origem">${mineradorVencedor}</span>
+                <span class="seta-disseminacao">compartilha para</span>
+                ${destinosHtml}
+            `;
+
+            box.classList.remove('pulso-disseminacao');
+            void box.offsetWidth;
+            box.classList.add('pulso-disseminacao');
         }
 
         function atualizarStatusServidor() {

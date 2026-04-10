@@ -244,14 +244,14 @@ http://localhost:8080
    - Atualização em tempo real via WebSocket
 
 3. **Histórico de Blocos Minerados**
-   - Lista completa dos blocos minerados (mais recentes primeiro)
-   - Exibe qual minerador resolveu cada bloco
-   - Mostra nonce, hash parcial e timestamp
+   - Mostra os blocos minerados com foco em **índice do bloco** e **minerador vencedor**
+   - Mantém o histórico em ordem visual para acompanhar os vencedores ao longo do tempo
 
 4. **Indicadores Visuais**
-   - Animação quando um bloco é minerado no tópico Kafka
-   - Efeito de pulso em mineradores ativos
-   - Destaque especial quando minerador vence (cor dourada)
+   - Animação de **cadeia em crescimento** com os blocos interligados
+   - A cadeia exibe todos os blocos disponíveis no monitor 
+   - Animação de disseminação do minerador vencedor para os demais mineradores
+   - Efeito de pulso em mineradores ativos e destaque visual do vencedor
 
 ### Como o Monitor Funciona Internamente
 
@@ -416,14 +416,3 @@ R: Não. Quando o servidor é encerrado, toda a blockchain é perdida. Para pers
 
 **P: Como verificar se um documento é legítimo?**
 R: Você pode verificar a assinatura RSA usando a chave pública armazenada no bloco.
-
----
-
-## 📚 Referências Conceituais
-
-- Nakamoto, S. (2008). Bitcoin: A Peer-to-Peer Electronic Cash System
-- Schneier, B. (1996). Applied Cryptography
-- NIST. Federal Information Processing Standards (FIPS 186-4)
-
----
-

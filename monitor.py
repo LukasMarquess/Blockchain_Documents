@@ -69,6 +69,11 @@ def escutar_blocos_kafka():
                     minerador_id = bloco.get("minerador", "desconhecido")
                     indice = bloco.get("indice")
 
+                    # Mantemos apenas o primeiro vencedor por índice de bloco.
+                    if any(item.get("indice") == indice for item in estado["blocos_minerados"]):
+                        print(f"[MONITOR] Bloco {indice} duplicado ignorado (vencedor tardio: {minerador_id}).")
+                        continue
+
                     timestamp = datetime.now().isoformat()
                     bloco_info = {
                         "indice": indice,
