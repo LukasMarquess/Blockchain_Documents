@@ -16,6 +16,10 @@ except ImportError:
 
 tarefa_atual = None
 interromper_mineracao = False
+cadeia_tamanho = 1
+cadeia_ultimo_hash = "GENESIS"
+indices_cadeia = {0}
+cadeia_lock = threading.Lock()
 
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "kafka:9092")
 KAFKA_SERVERS = [s.strip() for s in KAFKA_BOOTSTRAP.split(",") if s.strip()]
@@ -28,6 +32,47 @@ def hash_valido_do_bloco(bloco):
     conteudo = f"{bloco['indice']}{bloco['dados']}{bloco['hash_anterior']}{bloco['nonce']}"
     calculado = hashlib.sha256(conteudo.encode()).hexdigest()
     return calculado == bloco["hash"] and calculado[:bloco["dificuldade"]] == "0" * bloco["dificuldade"]
+
+
+def enviar_status_cadeia(cliente, minerador_id):
+    with cadeia_lock:
+        status = {
+            "tipo": "status_cadeia",
+            "minerador": minerador_id,
+            "cadeia_tamanho": cadeia_tamanho,
+            "ultimo_hash": cadeia_ultimo_hash,
+        }
+    try:
+        cliente.sendall((json.dumps(status) + "\n").encode())
+    except Exception:
+        print(f"[{minerador_id}] [ERRO] Falha ao enviar status da cadeia.")
+
+
+def tentar_anexar_bloco_local(bloco, minerador_id):
+    global cadeia_tamanho, cadeia_ultimo_hash, indices_cadeia
+    try:
+        indice = int(bloco["indice"])
+    except Exception:
+        return False
+
+    if not hash_valido_do_bloco(bloco):
+        return False
+
+    with cadeia_lock:
+        if indice in indices_cadeia:
+            return False
+
+        # Regra simples: só anexamos bloco que estende a ponta local.
+        if indice != cadeia_tamanho:
+            return False
+
+        if bloco.get("hash_anterior") != cadeia_ultimo_hash:
+            return False
+
+        indices_cadeia.add(indice)
+        cadeia_tamanho = indice + 1
+        cadeia_ultimo_hash = bloco["hash"]
+        return True
 
 
 def criar_produtor_kafka():
@@ -105,6 +150,8 @@ def minerar_bloco(cliente, minerador_id, produtor_kafka):
                         "minerador": minerador_id,
                     }
 
+                    tentar_anexar_bloco_local(bloco_minerado, minerador_id)
+
                     try:
                         produtor_kafka.send(TOPICO_BLOCO, bloco_minerado)
                         produtor_kafka.flush()
@@ -117,10 +164,13 @@ def minerar_bloco(cliente, minerador_id, produtor_kafka):
                         "nonce": nonce,
                         "hash": h,
                         "dados": dados,
-                        "minerador": minerador_id
+                        "minerador": minerador_id,
+                        "cadeia_tamanho": cadeia_tamanho,
+                        "ultimo_hash": cadeia_ultimo_hash,
                     })
                     try:
                         cliente.sendall((resposta + "\n").encode())
+                        enviar_status_cadeia(cliente, minerador_id)
                     except:
                         print(f"[{minerador_id}] [ERRO] Falha ao enviar resposta ao servidor.")
                     
@@ -148,8 +198,10 @@ def escutar_servidor(cliente, minerador_id):
                 msg, buffer = buffer.split("\n", 1)
                 if not msg.strip(): continue
                 
-                nova_tarefa = json.loads(msg)
-                
+                mensagem = json.loads(msg)
+
+                nova_tarefa = mensagem
+
                 # Se recebemos uma tarefa nova, avisamos o loop de mineração para parar
                 print(f"\n[{minerador_id}] [REDE] Recebido desafio para Bloco {nova_tarefa['indice']}")
                 tarefa_atual = nova_tarefa
@@ -158,7 +210,7 @@ def escutar_servidor(cliente, minerador_id):
             break
 
 
-def escutar_kafka(minerador_id):
+def escutar_kafka(cliente, minerador_id):
     global tarefa_atual, interromper_mineracao
 
     try:
@@ -178,10 +230,16 @@ def escutar_kafka(minerador_id):
 
             print(f"\n[{minerador_id}] [KAFKA] Bloco {indice} disseminado por {origem}.")
 
-            if tarefa_atual and indice == tarefa_atual.get("indice") and hash_valido_do_bloco(bloco_minerado):
-                tarefa_atual = None
-                interromper_mineracao = True
-                print(f"[{minerador_id}] [KAFKA] Mineração do Bloco {indice} interrompida.")
+            if hash_valido_do_bloco(bloco_minerado):
+                anexado = tentar_anexar_bloco_local(bloco_minerado, minerador_id)
+                if anexado:
+                    print(f"[{minerador_id}] [CADEIA] Bloco {indice} anexado localmente.")
+                    enviar_status_cadeia(cliente, minerador_id)
+
+                if tarefa_atual and indice == tarefa_atual.get("indice"):
+                    tarefa_atual = None
+                    interromper_mineracao = True
+                    print(f"[{minerador_id}] [KAFKA] Mineração do Bloco {indice} interrompida.")
         except Exception:
             continue
 
@@ -193,10 +251,11 @@ def iniciar_minerador(minerador_id="Minerador"):
         # As threads de recepção precisam estar prontas antes do primeiro desafio
         # para não perder a mensagem inicial enviada pelo servidor.
         threading.Thread(target=escutar_servidor, args=(cliente, minerador_id), daemon=True).start()
-        threading.Thread(target=escutar_kafka, args=(minerador_id,), daemon=True).start()
+        threading.Thread(target=escutar_kafka, args=(cliente, minerador_id), daemon=True).start()
         try:
             hello = json.dumps({"tipo": "hello", "minerador": minerador_id}) + "\n"
             cliente.sendall(hello.encode())
+            enviar_status_cadeia(cliente, minerador_id)
         except Exception:
             print(f"[{minerador_id}] [ERRO] Falha ao registrar identificacao no servidor.")
         print("="*40)

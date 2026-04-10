@@ -4,14 +4,14 @@ import threading
 import random
 import time
 import os
+import hashlib
 from datetime import datetime
 from flask import Flask, jsonify, request
-from blockchain import Blockchain
-from bloco import Bloco
 from identidade import gerar_chaves, assinar_dados, exportar_chave_publica
 
 servidor_app = Flask(__name__)
 servidor_instancia = None
+
 
 class ServidorBlockchain:
     def __init__(self):
@@ -19,36 +19,33 @@ class ServidorBlockchain:
         self.porta = int(os.getenv("SERVER_PORT", "5000"))
         self.porta_controle = int(os.getenv("SERVER_CONTROL_PORT", "5001"))
         self.min_mineradores_inicio = int(os.getenv("MIN_MINERADORES_INICIO", "4"))
-        self.blockchain = Blockchain()
+        self.dificuldade = int(os.getenv("DIFFICULDADE", "5"))
+
         self.mineradores = {}
         self.historico_blocos = []
-        self.bloco_atual_resolvido = True # Começa como True para o gerador iniciar
+        self.cadeia_referencia = {
+            "tamanho": 1,
+            "ultimo_hash": "GENESIS",
+            "minerador": "genesis",
+        }
+
+        self.bloco_atual_resolvido = True
+        self.desafio_atual = None
         self.ataque_ativo = False
         self.minerador_ataque = None
         self._aguardo_mineradores_logado = False
         self.lock = threading.Lock()
 
-        # --- IDENTIDADE DO SERVIDOR ---
-        # O servidor gera seu par de chaves ao iniciar
         self.chave_privada, self.chave_publica = gerar_chaves()
-        # Exportamos a pública para formato PEM (string) para enviar via JSON
         self.chave_publica_pem = exportar_chave_publica(self.chave_publica)
-        # ------------------------------------------
 
     def _liberar_punicoes_expiradas(self):
         agora = time.time()
-        for minerador_id, dados in self.mineradores.items():
+        for dados in self.mineradores.values():
             punido_ate = dados.get("punido_ate", 0)
             if punido_ate and punido_ate <= agora:
                 dados["punido_ate"] = 0
                 dados["status"] = "ativo"
-
-    def _minerador_disponivel(self, minerador_id):
-        dados = self.mineradores.get(minerador_id)
-        if not dados or not dados.get("conexao"):
-            return False
-        punido_ate = dados.get("punido_ate", 0)
-        return not punido_ate or punido_ate <= time.time()
 
     def _escolher_minerador_ataque(self):
         candidatos = [
@@ -58,6 +55,7 @@ class ServidorBlockchain:
         ]
         if not candidatos:
             return None
+
         candidatos.sort(
             key=lambda item: (
                 item[1].get("blocos_resolvidos", 0),
@@ -67,6 +65,42 @@ class ServidorBlockchain:
             reverse=True,
         )
         return candidatos[0][0]
+
+    def _atualizar_referencia_maior_cadeia(self):
+        maior = {
+            "tamanho": 1,
+            "ultimo_hash": "GENESIS",
+            "minerador": "genesis",
+            "ultima_atualizacao": 0,
+        }
+
+        for minerador_id, dados in self.mineradores.items():
+            tamanho = int(dados.get("cadeia_tamanho", 1))
+            ultimo_hash = dados.get("ultimo_hash", "GENESIS")
+            ultima_atualizacao = float(dados.get("ultima_atualizacao_cadeia", 0))
+
+            if tamanho > maior["tamanho"]:
+                maior = {
+                    "tamanho": tamanho,
+                    "ultimo_hash": ultimo_hash,
+                    "minerador": minerador_id,
+                    "ultima_atualizacao": ultima_atualizacao,
+                }
+                continue
+
+            if tamanho == maior["tamanho"] and ultima_atualizacao > maior["ultima_atualizacao"]:
+                maior = {
+                    "tamanho": tamanho,
+                    "ultimo_hash": ultimo_hash,
+                    "minerador": minerador_id,
+                    "ultima_atualizacao": ultima_atualizacao,
+                }
+
+        self.cadeia_referencia = {
+            "tamanho": maior["tamanho"],
+            "ultimo_hash": maior["ultimo_hash"],
+            "minerador": maior["minerador"],
+        }
 
     def _estado_minerador_publico(self, minerador_id, dados):
         punido_ate = dados.get("punido_ate", 0)
@@ -80,11 +114,14 @@ class ServidorBlockchain:
             "punido_ate": punido_ate,
             "punicao_restante_segundos": restante,
             "ataque_alvo": minerador_id == self.minerador_ataque,
+            "cadeia_tamanho": int(dados.get("cadeia_tamanho", 1)),
+            "ultimo_hash": dados.get("ultimo_hash", "GENESIS"),
         }
 
     def estado_publico(self):
         with self.lock:
             self._liberar_punicoes_expiradas()
+            self._atualizar_referencia_maior_cadeia()
             return {
                 "mineradores": {
                     minerador_id: self._estado_minerador_publico(minerador_id, dados)
@@ -96,7 +133,9 @@ class ServidorBlockchain:
                     "tipo": "51%",
                 },
                 "blocos_minerados": list(self.historico_blocos),
+                "cadeia_referencia": dict(self.cadeia_referencia),
                 "bloco_atual_resolvido": self.bloco_atual_resolvido,
+                "desafio_atual": dict(self.desafio_atual) if self.desafio_atual else None,
                 "mineradores_conectados": len([d for d in self.mineradores.values() if d.get("conexao")]),
             }
 
@@ -139,9 +178,13 @@ class ServidorBlockchain:
                     "status": dados.get("status", "ativo"),
                     "punido_ate": dados.get("punido_ate", 0),
                     "punicoes": dados.get("punicoes", 0),
+                    "cadeia_tamanho": dados.get("cadeia_tamanho", 1),
+                    "ultimo_hash": dados.get("ultimo_hash", "GENESIS"),
+                    "ultima_atualizacao_cadeia": time.time(),
                 }
             )
             self.mineradores[minerador_id] = dados
+            self._atualizar_referencia_maior_cadeia()
             print(f"[CONEXÃO] Minerador registrado: {minerador_id} ({endereco})")
 
     def remover_minerador(self, minerador_id):
@@ -151,6 +194,18 @@ class ServidorBlockchain:
                 print(f"[CONEXÃO] Minerador removido: {minerador_id}")
                 if self.minerador_ataque == minerador_id:
                     self.minerador_ataque = None
+                self._atualizar_referencia_maior_cadeia()
+
+    def atualizar_status_cadeia(self, minerador_id, resposta):
+        with self.lock:
+            dados_minerador = self.mineradores.get(minerador_id)
+            if not dados_minerador:
+                return
+
+            dados_minerador["cadeia_tamanho"] = int(resposta.get("cadeia_tamanho", 1))
+            dados_minerador["ultimo_hash"] = resposta.get("ultimo_hash", "GENESIS")
+            dados_minerador["ultima_atualizacao_cadeia"] = time.time()
+            self._atualizar_referencia_maior_cadeia()
 
     def gerenciar_minerador(self, conexao, endereco):
         minerador_id = None
@@ -160,17 +215,24 @@ class ServidorBlockchain:
         try:
             while True:
                 dados = conexao.recv(4096).decode()
-                if not dados: break
-                
+                if not dados:
+                    break
+
                 buffer += dados
                 while "\n" in buffer:
                     msg, buffer = buffer.split("\n", 1)
-                    if not msg.strip(): continue
-                    
+                    if not msg.strip():
+                        continue
+
                     resposta = json.loads(msg)
                     if resposta.get("tipo") == "hello" or not minerador_id:
                         minerador_id = resposta.get("minerador", minerador_id or f"{endereco[0]}:{endereco[1]}")
                         self.registrar_minerador(conexao, endereco, minerador_id)
+                        continue
+
+                    if resposta.get("tipo") == "status_cadeia":
+                        if minerador_id:
+                            self.atualizar_status_cadeia(minerador_id, resposta)
                         continue
 
                     minerador_msg = resposta.get("minerador", minerador_id)
@@ -190,10 +252,7 @@ class ServidorBlockchain:
     def processar_vitoria(self, resposta, endereco, minerador_id):
         with self.lock:
             self._liberar_punicoes_expiradas()
-            indice_recebido = resposta['indice']
-            indice_esperado = len(self.blockchain.chain)
             dados_minerador = self.mineradores.get(minerador_id)
-
             if not dados_minerador:
                 return
 
@@ -201,56 +260,83 @@ class ServidorBlockchain:
                 print(f"[PUNIÇÃO] {minerador_id} tentou validar bloco durante o bloqueio.")
                 return
 
-            if indice_recebido == indice_esperado and not self.bloco_atual_resolvido:
-                self.bloco_atual_resolvido = True
-                
-                novo = Bloco(indice_recebido, resposta['dados'], self.blockchain.ultimo_bloco().hash)
-                novo.nonce = resposta['nonce']
-                novo.hash = resposta['hash']
-                
-                self.blockchain.chain.append(novo)
-                self.historico_blocos.append(
-                    {
-                        "indice": indice_recebido,
-                        "minerador": minerador_id,
-                        "nonce": resposta.get("nonce"),
-                        "hash": resposta.get("hash", "")[:16],
-                        "timestamp": datetime.now().isoformat(),
-                    }
-                )
+            indice_recebido = int(resposta.get("indice"))
+            if self.bloco_atual_resolvido or not self.desafio_atual:
+                return
 
-                dados_minerador["blocos_resolvidos"] = dados_minerador.get("blocos_resolvidos", 0) + 1
-                dados_minerador["consecutivos"] = dados_minerador.get("consecutivos", 0) + 1
-                dados_minerador["status"] = "ativo"
+            indice_esperado = int(self.desafio_atual.get("indice", -1))
+            hash_anterior_esperado = self.desafio_atual.get("hash_anterior", "GENESIS")
+            dificuldade_esperada = int(self.desafio_atual.get("dificuldade", self.dificuldade))
 
-                for outro_id, outro_dados in self.mineradores.items():
-                    if outro_id != minerador_id:
-                        outro_dados["consecutivos"] = 0
+            if indice_recebido != indice_esperado:
+                return
 
-                if dados_minerador["consecutivos"] >= 5:
-                    dados_minerador["punido_ate"] = time.time() + 180
-                    dados_minerador["status"] = "punido"
-                    dados_minerador["consecutivos"] = 0
-                    dados_minerador["punicoes"] = dados_minerador.get("punicoes", 0) + 1
-                    print(f"[PUNIÇÃO] {minerador_id} bloqueado por 3 minutos após 5 vitórias consecutivas.")
-                
-                print(f"\n" + "!"*50)
-                print(f"VENCEDOR: {minerador_id} | {endereco}")
-                print(f"Bloco #{indice_recebido} validado e inserido!")
-                print("!"*50)
-                
-                self.blockchain.exibir_blockchain()
+            nonce = resposta.get("nonce")
+            hash_recebido = resposta.get("hash")
+            dados_bloco = resposta.get("dados")
+            conteudo = f"{indice_recebido}{dados_bloco}{hash_anterior_esperado}{nonce}"
+            hash_calculado = hashlib.sha256(conteudo.encode()).hexdigest()
+
+            if hash_calculado != hash_recebido or not hash_recebido.startswith("0" * dificuldade_esperada):
+                print(f"[CONSENSO] Bloco {indice_recebido} de {minerador_id} inválido para a cadeia de referência.")
+                return
+
+            cadeia_tamanho_reportada = int(resposta.get("cadeia_tamanho", indice_recebido + 1))
+            ultimo_hash_reportado = resposta.get("ultimo_hash", hash_recebido)
+            if cadeia_tamanho_reportada < indice_recebido + 1:
+                cadeia_tamanho_reportada = indice_recebido + 1
+
+            self.bloco_atual_resolvido = True
+            self.desafio_atual = None
+            self.historico_blocos.append(
+                {
+                    "indice": indice_recebido,
+                    "minerador": minerador_id,
+                    "nonce": nonce,
+                    "hash": hash_recebido[:16],
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
+
+            dados_minerador["cadeia_tamanho"] = max(dados_minerador.get("cadeia_tamanho", 1), cadeia_tamanho_reportada)
+            dados_minerador["ultimo_hash"] = ultimo_hash_reportado
+            dados_minerador["ultima_atualizacao_cadeia"] = time.time()
+
+            dados_minerador["blocos_resolvidos"] = dados_minerador.get("blocos_resolvidos", 0) + 1
+            dados_minerador["consecutivos"] = dados_minerador.get("consecutivos", 0) + 1
+            dados_minerador["status"] = "ativo"
+
+            for outro_id, outro_dados in self.mineradores.items():
+                if outro_id != minerador_id:
+                    outro_dados["consecutivos"] = 0
+
+            if dados_minerador["consecutivos"] >= 5:
+                dados_minerador["punido_ate"] = time.time() + 180
+                dados_minerador["status"] = "punido"
+                dados_minerador["consecutivos"] = 0
+                dados_minerador["punicoes"] = dados_minerador.get("punicoes", 0) + 1
+                print(f"[PUNIÇÃO] {minerador_id} bloqueado por 3 minutos após 5 vitórias consecutivas.")
+
+            self._atualizar_referencia_maior_cadeia()
+
+            print("\n" + "!" * 50)
+            print(f"VENCEDOR: {minerador_id} | {endereco}")
+            print(
+                f"Bloco #{indice_recebido} aceito. Cadeia válida atual: "
+                f"{self.cadeia_referencia['tamanho']} blocos ({self.cadeia_referencia['minerador']})."
+            )
+            print("!" * 50)
 
     def gerador_de_desafios(self):
         nomes = ["Lukas", "Maria", "Carlos", "Ana", "Bruno", "Faculdade_TI"]
         docs = ["Contrato_Social", "Escritura_Terreno", "Diploma_Digital", "Nota_Fiscal"]
 
         while True:
-            time.sleep(5) 
+            time.sleep(5)
 
-            # Só gera novo desafio se houver mineradores e o anterior foi resolvido
             with self.lock:
                 self._liberar_punicoes_expiradas()
+                self._atualizar_referencia_maior_cadeia()
                 mineradores_ativos = {
                     minerador_id: dados
                     for minerador_id, dados in self.mineradores.items()
@@ -271,32 +357,31 @@ class ServidorBlockchain:
                 self._aguardo_mineradores_logado = False
 
             if len(mineradores_ativos) > 0 and self.bloco_atual_resolvido:
-                proximo_indice = len(self.blockchain.chain)
-                
+                proximo_indice = int(self.cadeia_referencia.get("tamanho", 1))
+                hash_anterior = self.cadeia_referencia.get("ultimo_hash", "GENESIS")
+
                 autor = random.choice(nomes)
                 tipo = random.choice(docs)
                 hash_fake = f"sha256_{random.getrandbits(64):016x}"
-                
-                # --- ASSINATURA DIGITAL ---
-                # O servidor assina o hash do documento para provar que ele é o emissor
                 assinatura_digital = assinar_dados(self.chave_privada, hash_fake)
-                
-                # Criamos um dicionário robusto de dados
+
                 dados_payload = {
                     "documento": tipo,
                     "autor_nome": autor,
                     "hash_arquivo": hash_fake,
                     "assinatura_emissor": assinatura_digital,
-                    "chave_publica_emissor": self.chave_publica_pem
+                    "chave_publica_emissor": self.chave_publica_pem,
                 }
-                # --------------------------------------
 
-                # Prepara o pacote usando o método da Blockchain
-                # Note que passamos o payload como string JSON para os 'dados' do bloco
-                tarefa = self.blockchain.preparar_novo_bloco(hash_fake, json.dumps(dados_payload))
-                tarefa['indice'] = proximo_indice
-                
+                tarefa = {
+                    "indice": proximo_indice,
+                    "dados": json.dumps(dados_payload),
+                    "hash_anterior": hash_anterior,
+                    "dificuldade": self.dificuldade,
+                }
+
                 self.bloco_atual_resolvido = False
+                self.desafio_atual = dict(tarefa)
                 mensagem = (json.dumps(tarefa) + "\n").encode()
 
                 if self.ataque_ativo and self.minerador_ataque in mineradores_ativos:
@@ -304,15 +389,18 @@ class ServidorBlockchain:
                 else:
                     destinatarios = list(mineradores_ativos.keys())
 
-                print(f"\n[SISTEMA] Documento Assinado! Disparando Bloco #{proximo_indice}...")
-                
+                print(
+                    f"\n[SISTEMA] Documento Assinado! Disparando Bloco #{proximo_indice} "
+                    f"com referência em {self.cadeia_referencia['minerador']}..."
+                )
+
                 for minerador_id in destinatarios:
                     dados_minerador = mineradores_ativos.get(minerador_id)
                     if not dados_minerador:
                         continue
                     try:
                         dados_minerador["conexao"].sendall(mensagem)
-                    except:
+                    except Exception:
                         self.remover_minerador(minerador_id)
 
     def iniciar_api_controle(self):
@@ -335,16 +423,17 @@ class ServidorBlockchain:
         threading.Thread(target=self.gerador_de_desafios, daemon=True).start()
         threading.Thread(target=self.iniciar_api_controle, daemon=True).start()
 
-        print("\n" + "="*50)
-        print(" SERVIDOR BLOCKCHAIN COM ASSINATURA RSA ")
+        print("\n" + "=" * 50)
+        print(" SERVIDOR BLOCKCHAIN COM REGRA DA MAIOR CADEIA ")
         print(f" Chave Pública: {self.chave_publica_pem[:50]}...")
         print(f" Host: {self.host} | Porta: {self.porta} | Controle HTTP: {self.porta_controle}")
-        print("="*50)
+        print("=" * 50)
 
         while True:
             conn, addr = servidor.accept()
             t = threading.Thread(target=self.gerenciar_minerador, args=(conn, addr), daemon=True)
             t.start()
+
 
 @servidor_app.route("/api/estado")
 def api_estado_controle():

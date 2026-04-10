@@ -23,6 +23,8 @@ Este projeto implementa um sistema de **blockchain descentralizado** para regist
 - **Prova de Trabalho (Proof of Work)**: Um mecanismo de consenso baseado em cálculos de hash
 - **Assinatura Digital RSA**: Para autenticação e integridade dos documentos
 - **Mineração Distribuída**: Múltiplos mineradores competem para resolver blocos
+- **Regra da Maior Cadeia**: A cadeia válida é a do minerador com maior comprimento reportado
+- **Validação pelos Mineradores**: Os próprios mineradores validam e atualizam suas cadeias locais
 - **Rede Cliente-Servidor**: Arquitetura baseada em sockets TCP/IP
 
 O objetivo principal é demonstrar como documentos podem ser registrados de forma imutável e verificável em uma rede descentralizada.
@@ -34,10 +36,10 @@ O objetivo principal é demonstrar como documentos podem ser registrados de form
 ```
 ┌─────────────────────────────────────────────────────┐
 │         SERVIDOR BLOCKCHAIN (servidor.py)          │
-│  • Gerencia blockchain central                      │
+│  • Coordena a regra da maior cadeia                 │
 │  • Gera desafios de mineração                       │
 │  • Assinatura digital RSA                           │
-│  • Valida blocos resolvidos                         │
+│  • Aceita blocos com base no estado reportado       │
 └─────────────────────────────────────────────────────┘
           ▲                  ▲                  ▲
           │                  │                  │
@@ -155,7 +157,7 @@ Conecta-se ao servidor e executa a prova de trabalho.
 ---
 
 ### 5. **servidor.py** - Servidor Central da Blockchain
-Gerencia a blockchain, valida blocos e coordena mineradores.
+Coordena os mineradores e aplica a regra da maior cadeia.
 
 **Classes:**
 - `ServidorBlockchain()` - Servidor central
@@ -164,7 +166,8 @@ Gerencia a blockchain, valida blocos e coordena mineradores.
 - Gera desafios de mineração a cada 5 segundos
 - Mantém lista de mineradores conectados
 - Aguarda um pool mínimo de mineradores conectados antes de iniciar desafios
-- Valida blocos resolvidos
+- Usa a maior cadeia reportada pelos mineradores como referência válida
+- Não precisa armazenar a cadeia completa de blocos
 - Assina digitalmente cada documento
 - Disponibiliza API de controle para simulação de ataque 51%
 - Gerencia threads para cada minerador
@@ -172,7 +175,7 @@ Gerencia a blockchain, valida blocos e coordena mineradores.
 **Componentes:**
 1. **Gerador de Desafios**: Cria novos blocos periodicamente
 2. **Pool de Mineradores**: Gerencia múltiplas conexões simultâneas
-3. **Validador**: Verifica soluções antes de adicionar à cadeia
+3. **Consenso de Maior Cadeia**: Atualiza a referência com base nos estados enviados pelos mineradores
 4. **Sistema de Assinatura**: Assina cada documento com chave privada RSA
 
 ---
@@ -281,7 +284,7 @@ http://localhost:8080
 ```
 1. INICIALIZAÇÃO
    ├─ Servidor inicia e gera par de chaves RSA
-   ├─ Blockchain criada com bloco Gênesis
+   ├─ Cadeias locais dos mineradores começam no bloco Gênesis
    └─ Gerador de desafios inicia (thread daemon)
 
 2. CONEXÃO DE MINERADORES
@@ -310,9 +313,9 @@ http://localhost:8080
    └─ O primeiro a encontrar hash válido vence
 
 5. VALIDAÇÃO E CONSENSO
-   ├─ Servidor valida solução
-   ├─ Adiciona bloco à blockchain
-   ├─ Transmite novo estado para mineradores
+   ├─ Mineradores validam e anexam blocos em suas cadeias locais
+   ├─ Mineradores reportam tamanho/hash da cadeia ao servidor
+   ├─ Servidor adota a maior cadeia como referência válida
    └─ Retorna ao passo 3
 
 6. BLOQUEIO DE CÓPIAS SIMULTÂNEAS
@@ -340,20 +343,25 @@ http://localhost:8080
 - O primeiro a resolver adiciona o bloco
 - Recompensa implícita: segurança da rede
 
-### 4. **Defesa Anti-Dominância (5 em sequência)**
+### 4. **Regra da Maior Cadeia**
+- O servidor não mantém a cadeia completa local como fonte de verdade
+- Cada minerador mantém sua cadeia local e envia status (`cadeia_tamanho` e `ultimo_hash`)
+- A cadeia com maior comprimento é considerada válida
+
+### 5. **Defesa Anti-Dominância (5 em sequência)**
 - Se o mesmo minerador vencer 5 blocos seguidos, ele é bloqueado por 3 minutos
 - Durante o bloqueio, o servidor ignora vitórias desse minerador
 - A UI mostra o status de punição com timer regressivo
 
-### 5. **Validação de Integridade**
+### 6. **Validação de Integridade**
 ```python
-# A blockchain valida:
+# Cada minerador valida:
 ✓ Se o hash de cada bloco está correto
 ✓ Se cada bloco aponta para o anterior correto
 ✓ Se a cadeia não foi modificada
 ```
 
-### 6. **Thread-Safety**
+### 7. **Thread-Safety**
 - Lock mutex (`threading.Lock`) garante consistência
 - Previne condições de corrida
 - Apenas uma transação modificando blockchain por vez
@@ -420,13 +428,13 @@ Exemplo de estrutura JSON de um bloco:
 ## ❓ FAQ
 
 **P: Por que o minerador às vezes não consegue resolver um bloco?**
-R: A dificuldade pode ser ajustada em `blockchain.py` na variável `self.dificuldade`. Aumentar esse valor requer mais poder computacional.
+R: A dificuldade é definida no servidor (variável de ambiente `DIFFICULDADE`). Aumentar esse valor requer mais poder computacional.
 
 **P: Como aumentar o número de mineradores?**
 R: Duplique serviços no `docker-compose.yml` (por exemplo, `minerador-5`, `minerador-6`) usando IDs diferentes no comando.
 
 **P: Os dados são persistentes?**
-R: Não. Quando o servidor é encerrado, toda a blockchain é perdida. Para persistência, seria necessário implementar um banco de dados.
+R: Não. As cadeias locais dos mineradores e o estado em memória do servidor são perdidos quando os containers param. Para persistência, seria necessário implementar armazenamento durável.
 
 **P: Como verificar se um documento é legítimo?**
 R: Você pode verificar a assinatura RSA usando a chave pública armazenada no bloco.
