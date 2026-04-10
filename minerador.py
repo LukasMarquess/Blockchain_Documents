@@ -116,7 +116,8 @@ def minerar_bloco(cliente, minerador_id, produtor_kafka):
                         "indice": indice,
                         "nonce": nonce,
                         "hash": h,
-                        "dados": dados
+                        "dados": dados,
+                        "minerador": minerador_id
                     })
                     try:
                         cliente.sendall((resposta + "\n").encode())
@@ -189,14 +190,19 @@ def iniciar_minerador(minerador_id="Minerador"):
     try:
         aguardar_servidor(cliente)
         produtor_kafka = aguardar_produtor_kafka()
+        # As threads de recepção precisam estar prontas antes do primeiro desafio
+        # para não perder a mensagem inicial enviada pelo servidor.
+        threading.Thread(target=escutar_servidor, args=(cliente, minerador_id), daemon=True).start()
+        threading.Thread(target=escutar_kafka, args=(minerador_id,), daemon=True).start()
+        try:
+            hello = json.dumps({"tipo": "hello", "minerador": minerador_id}) + "\n"
+            cliente.sendall(hello.encode())
+        except Exception:
+            print(f"[{minerador_id}] [ERRO] Falha ao registrar identificacao no servidor.")
         print("="*40)
         print(f" {minerador_id.upper()} CONECTADO E COMPETINDO ")
         print("="*40)
 
-        # Thread para ouvir o servidor enquanto a CPU minera
-        threading.Thread(target=escutar_servidor, args=(cliente, minerador_id), daemon=True).start()
-        threading.Thread(target=escutar_kafka, args=(minerador_id,), daemon=True).start()
-        
         # Inicia a função de mineração no thread principal
         minerar_bloco(cliente, minerador_id, produtor_kafka)
         

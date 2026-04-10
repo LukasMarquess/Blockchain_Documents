@@ -4,7 +4,9 @@ import socket
 import threading
 import time
 from datetime import datetime
-from flask import Flask, render_template
+from urllib import error as urlerror
+from urllib import request as urlrequest
+from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit
 
 try:
@@ -21,6 +23,7 @@ KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "kafka:9092")
 KAFKA_SERVERS = [s.strip() for s in KAFKA_BOOTSTRAP.split(",") if s.strip()]
 SERVER_HOST = os.getenv("SERVER_HOST", "blockchain-servidor")
 SERVER_PORT = int(os.getenv("SERVER_PORT", "5000"))
+SERVER_CONTROL_PORT = int(os.getenv("SERVER_CONTROL_PORT", "5001"))
 TOPICO_BLOCO = "blocos_minerados"
 
 # Estado global do monitor
@@ -28,8 +31,82 @@ estado = {
     "blockchain": [],
     "mineradores": {},
     "blocos_minerados": [],
+    "ataque": {"ativo": False, "minerador_alvo": None, "tipo": "51%"},
     "ultima_atualizacao": datetime.now().isoformat(),
 }
+
+
+def _endpoint_controle_servidor(caminho):
+    return f"http://{SERVER_HOST}:{SERVER_CONTROL_PORT}{caminho}"
+
+
+def obter_estado_controle_servidor():
+    try:
+        requisicao = urlrequest.Request(_endpoint_controle_servidor("/api/estado"), method="GET")
+        with urlrequest.urlopen(requisicao, timeout=3) as resposta:
+            return json.loads(resposta.read().decode("utf-8"))
+    except Exception:
+        return {}
+
+
+def enviar_ataque_servidor(minerador=None):
+    corpo = json.dumps({"minerador": minerador}).encode("utf-8")
+    requisicao = urlrequest.Request(
+        _endpoint_controle_servidor("/api/ataque"),
+        data=corpo,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    try:
+        with urlrequest.urlopen(requisicao, timeout=5) as resposta:
+            return resposta.status, json.loads(resposta.read().decode("utf-8"))
+    except urlerror.HTTPError as erro:
+        corpo_erro = erro.read().decode("utf-8") if erro.fp else ""
+        payload = json.loads(corpo_erro) if corpo_erro else {"ok": False, "mensagem": str(erro)}
+        return erro.code, payload
+
+
+def mesclar_mineradores(com_estado_controle):
+    mineradores = dict(estado["mineradores"])
+    for minerador_id, dados_controle in (com_estado_controle.get("mineradores") or {}).items():
+        atual = mineradores.get(minerador_id, {})
+        mineradores[minerador_id] = {
+            "nome": dados_controle.get("nome", minerador_id),
+            "blocos_resolvidos": dados_controle.get("blocos_resolvidos", atual.get("blocos_resolvidos", 0)),
+            "status": dados_controle.get("status", atual.get("status", "ativo")),
+            "consecutivos": dados_controle.get("consecutivos", atual.get("consecutivos", 0)),
+            "punido_ate": dados_controle.get("punido_ate", atual.get("punido_ate", 0)),
+            "punicao_restante_segundos": dados_controle.get(
+                "punicao_restante_segundos", atual.get("punicao_restante_segundos", 0)
+            ),
+            "ataque_alvo": dados_controle.get("ataque_alvo", atual.get("ataque_alvo", False)),
+        }
+    return mineradores
+
+
+def mesclar_blocos(com_estado_controle):
+    existentes = {
+        item.get("indice"): item
+        for item in estado["blocos_minerados"]
+        if item.get("indice") is not None
+    }
+
+    for item in (com_estado_controle.get("blocos_minerados") or []):
+        indice = item.get("indice")
+        if indice is None:
+            continue
+        existentes[indice] = {
+            "indice": indice,
+            "minerador": item.get("minerador", "desconhecido"),
+            "nonce": item.get("nonce"),
+            "hash": item.get("hash", "")[:16],
+            "timestamp": item.get("timestamp", datetime.now().isoformat()),
+        }
+
+    estado["blocos_minerados"] = sorted(
+        existentes.values(), key=lambda bloco: int(bloco.get("indice", 0))
+    )
 
 
 def conectar_servidor():
@@ -68,6 +145,14 @@ def escutar_blocos_kafka():
                     bloco = mensagem.value
                     minerador_id = bloco.get("minerador", "desconhecido")
                     indice = bloco.get("indice")
+                    controle_servidor = obter_estado_controle_servidor()
+                    mesclar_blocos(controle_servidor)
+                    mineradores_controle = controle_servidor.get("mineradores", {})
+                    minerador_controle = mineradores_controle.get(minerador_id, {})
+
+                    if minerador_controle.get("status") == "punido" and minerador_controle.get("punicao_restante_segundos", 0) > 0:
+                        print(f"[MONITOR] Bloco {indice} ignorado porque {minerador_id} está punido.")
+                        continue
 
                     # Mantemos apenas o primeiro vencedor por índice de bloco.
                     if any(item.get("indice") == indice for item in estado["blocos_minerados"]):
@@ -89,9 +174,26 @@ def escutar_blocos_kafka():
                             "nome": minerador_id,
                             "blocos_resolvidos": 0,
                             "status": "ativo",
+                            "consecutivos": 0,
+                            "punido_ate": 0,
+                            "punicao_restante_segundos": 0,
                         }
                     estado["mineradores"][minerador_id]["blocos_resolvidos"] += 1
+                    estado["mineradores"][minerador_id]["status"] = minerador_controle.get(
+                        "status", estado["mineradores"][minerador_id].get("status", "ativo")
+                    )
+                    estado["mineradores"][minerador_id]["consecutivos"] = minerador_controle.get(
+                        "consecutivos", estado["mineradores"][minerador_id].get("consecutivos", 0)
+                    )
+                    estado["mineradores"][minerador_id]["punido_ate"] = minerador_controle.get(
+                        "punido_ate", estado["mineradores"][minerador_id].get("punido_ate", 0)
+                    )
+                    estado["mineradores"][minerador_id]["punicao_restante_segundos"] = minerador_controle.get(
+                        "punicao_restante_segundos",
+                        estado["mineradores"][minerador_id].get("punicao_restante_segundos", 0),
+                    )
                     estado["ultima_atualizacao"] = timestamp
+                    estado["ataque"] = controle_servidor.get("ataque", estado.get("ataque", {}))
 
                     # Emitir evento para todos os clientes conectados
                     socketio.emit(
@@ -124,23 +226,52 @@ def index():
 @app.route("/api/estado")
 def api_estado():
     """Retorna o estado atual da blockchain."""
+    controle_servidor = obter_estado_controle_servidor()
+    mineradores = mesclar_mineradores(controle_servidor)
+    mesclar_blocos(controle_servidor)
+    estado["ataque"] = controle_servidor.get("ataque", estado.get("ataque", {}))
     return {
         "blockchain": estado["blockchain"],
-        "mineradores": estado["mineradores"],
+        "mineradores": mineradores,
         "blocos_minerados": estado["blocos_minerados"],
+        "ataque": estado["ataque"],
         "ultima_atualizacao": estado["ultima_atualizacao"],
     }
+
+
+@app.route("/api/ataque", methods=["POST"])
+def api_ataque():
+    """Dispara a simulação de ataque 51% no servidor."""
+    dados = request.get_json(silent=True) or {}
+    try:
+        codigo, resultado = enviar_ataque_servidor(dados.get("minerador"))
+        estado_servidor = obter_estado_controle_servidor()
+        estado["ataque"] = estado_servidor.get("ataque", estado.get("ataque", {}))
+        estado["mineradores"] = mesclar_mineradores(estado_servidor)
+        mesclar_blocos(estado_servidor)
+        return {
+            "ok": resultado.get("ok", codigo < 400),
+            "resultado": resultado,
+            "ataque": estado["ataque"],
+            "mineradores": estado["mineradores"],
+        }, codigo
+    except urlerror.URLError as erro:
+        return {"ok": False, "mensagem": f"Falha ao acionar o ataque: {erro}"}, 502
 
 
 @socketio.on("connect")
 def handle_connect():
     """Evento quando cliente se conecta."""
     print(f"[MONITOR] Cliente conectado")
+    controle_servidor = obter_estado_controle_servidor()
+    estado["ataque"] = controle_servidor.get("ataque", estado.get("ataque", {}))
+    mesclar_blocos(controle_servidor)
     emit(
         "estado_inicial",
         {
-            "mineradores": estado["mineradores"],
+            "mineradores": mesclar_mineradores(controle_servidor),
             "blocos_minerados": estado["blocos_minerados"],
+            "ataque": estado["ataque"],
             "servidor_conectado": conectar_servidor(),
         },
     )

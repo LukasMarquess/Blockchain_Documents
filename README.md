@@ -163,8 +163,10 @@ Gerencia a blockchain, valida blocos e coordena mineradores.
 **Funcionalidades:**
 - Gera desafios de mineração a cada 5 segundos
 - Mantém lista de mineradores conectados
+- Aguarda um pool mínimo de mineradores conectados antes de iniciar desafios
 - Valida blocos resolvidos
 - Assina digitalmente cada documento
+- Disponibiliza API de controle para simulação de ataque 51%
 - Gerencia threads para cada minerador
 
 **Componentes:**
@@ -207,11 +209,12 @@ docker compose down
 - Zookeeper
 - Kafka
 - Servidor blockchain
-- 4 mineradores
+- 6 mineradores
 - Monitor web em tempo real
 
 ### Rede interna
 - Servidor: `blockchain-servidor:5000`
+- Controle do servidor: `blockchain-servidor:5001`
 - Kafka: `kafka:9092`
 
 ---
@@ -223,6 +226,8 @@ O projeto inclui um **monitor web em tempo real** que mostra:
 - **Placar de blocos** minerados por cada minerador
 - **Blocos minerados** com disseminação via Kafka em tempo real
 - **Status de conexão** com servidor e Kafka
+- **Simulação de ataque 51%** por botão
+- **Punição visual** com destaque em vermelho e timer regressivo
 
 ### Acessando o Monitor
 
@@ -253,12 +258,19 @@ http://localhost:8080
    - Animação de disseminação do minerador vencedor para os demais mineradores
    - Efeito de pulso em mineradores ativos e destaque visual do vencedor
 
+5. **Ataque 51% e Defesa**
+   - Botão para simular ataque de dominância de hashrate
+   - Quando ativo, o desafio pode ser direcionado ao minerador-alvo
+   - Se um minerador vencer **5 blocos consecutivos**, recebe punição de **3 minutos sem minerar**
+   - O monitor mostra o minerador punido em vermelho com timer em tempo real
+
 ### Como o Monitor Funciona Internamente
 
 1. **Conexão Kafka**: O monitor escuta o tópico `blocos_minerados` em tempo real
 2. **WebSocket**: Usa Socket.IO para comunicação bidirecional com o navegador
 3. **Dashboard Reativo**: Interface atualiza instantaneamente quando blocos são minerados
 4. **Disseminação Visual**: Mostra claramente qual minerador conseguiu minerar primeiro
+5. **Sincronização com Servidor**: O monitor mescla o estado oficial de blocos para não perder o bloco #1
 
 ---
 
@@ -275,9 +287,13 @@ http://localhost:8080
 2. CONEXÃO DE MINERADORES
    ├─ Minerador 1 conecta → reconhecimento do servidor
    ├─ Minerador 2 conecta → reconhecimento do servidor
-   └─ Minerador N conecta → reconhecimento do servidor
+   ├─ Minerador 3 conecta → reconhecimento do servidor
+   ├─ Minerador 4 conecta → reconhecimento do servidor
+   ├─ Minerador 5 conecta → reconhecimento do servidor
+   └─ Minerador 6 conecta → reconhecimento do servidor
 
 3. GERAÇÃO DE DESAFIO (a cada 5 segundos)
+   ├─ Servidor aguarda o mínimo de 6 mineradores conectados
    ├─ Servidor seleciona autor e documento aleatório
    ├─ Gera hash SHA-256 simulado
    ├─ Assina digitalmente com RSA (chave privada)
@@ -289,6 +305,8 @@ http://localhost:8080
    ├─ Minerador 2: Inicia PoW (concorrência)
    ├─ Minerador 3: Inicia PoW (concorrência)
    ├─ Minerador 4: Inicia PoW (concorrência)
+   ├─ Minerador 5: Inicia PoW (concorrência)
+   ├─ Minerador 6: Inicia PoW (concorrência)
    └─ O primeiro a encontrar hash válido vence
 
 5. VALIDAÇÃO E CONSENSO
@@ -322,7 +340,12 @@ http://localhost:8080
 - O primeiro a resolver adiciona o bloco
 - Recompensa implícita: segurança da rede
 
-### 4. **Validação de Integridade**
+### 4. **Defesa Anti-Dominância (5 em sequência)**
+- Se o mesmo minerador vencer 5 blocos seguidos, ele é bloqueado por 3 minutos
+- Durante o bloqueio, o servidor ignora vitórias desse minerador
+- A UI mostra o status de punição com timer regressivo
+
+### 5. **Validação de Integridade**
 ```python
 # A blockchain valida:
 ✓ Se o hash de cada bloco está correto
@@ -330,7 +353,7 @@ http://localhost:8080
 ✓ Se a cadeia não foi modificada
 ```
 
-### 5. **Thread-Safety**
+### 6. **Thread-Safety**
 - Lock mutex (`threading.Lock`) garante consistência
 - Previne condições de corrida
 - Apenas uma transação modificando blockchain por vez
@@ -387,16 +410,10 @@ Exemplo de estrutura JSON de um bloco:
 
 ## 👨‍💻 Autor e Contexto
 
-**Projeto**: Sistema de Blockchain Distribuído com Assinatura Digital
-**Propósito**: Educacional - Demonstração de conceitos de sistemas distribuídos
-**Tecnologia**: Sistemas Distribuídos e Criptografia
+**Projeto**: Sistema de Blockchain Distribuído com Assinatura Digital  
+**Propósito**: Educacional - Demonstração de conceitos de sistemas distribuídos  
+**Tecnologia**: Sistemas Distribuídos e Criptografia  
 **Data**: Março de 2026
-
----
-
-## 📝 Licença
-
-Este projeto é educacional e está disponível para fins de aprendizado.
 
 ---
 
@@ -407,9 +424,6 @@ R: A dificuldade pode ser ajustada em `blockchain.py` na variável `self.dificul
 
 **P: Como aumentar o número de mineradores?**
 R: Duplique serviços no `docker-compose.yml` (por exemplo, `minerador-5`, `minerador-6`) usando IDs diferentes no comando.
-
-**P: O que acontece se o servidor cair?**
-R: Todo o stack é orquestrado pelo Docker Compose. Reinicie com `docker compose up --build`.
 
 **P: Os dados são persistentes?**
 R: Não. Quando o servidor é encerrado, toda a blockchain é perdida. Para persistência, seria necessário implementar um banco de dados.

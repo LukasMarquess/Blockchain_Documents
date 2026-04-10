@@ -127,6 +127,18 @@
             animation: winner-pulse 0.6s ease;
         }
 
+        .minerador-card.punido {
+            background: linear-gradient(135deg, #7f1d1d 0%, #dc2626 100%);
+            color: white;
+            border-left-color: #fca5a5;
+            box-shadow: 0 10px 20px rgba(220, 38, 38, 0.35);
+        }
+
+        .minerador-card.dominante {
+            border-left-color: #f97316;
+            box-shadow: 0 10px 24px rgba(249, 115, 22, 0.22);
+        }
+
         @keyframes winner-pulse {
             0%, 100% { transform: scale(1); }
             50% { transform: scale(1.05); }
@@ -380,6 +392,98 @@
             animation: spin 2s linear infinite;
         }
 
+        .tempo-punicao {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.88em;
+            font-weight: 700;
+            color: #b91c1c;
+        }
+
+        .minerador-card.punido .tempo-punicao,
+        .minerador-card.punido .status-label {
+            color: #fff7ed;
+        }
+
+        .status-label {
+            font-size: 0.82em;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+        }
+
+        .painel-ataque {
+            grid-column: 1 / -1;
+            background: linear-gradient(135deg, #fff7ed 0%, #ffe4e6 100%);
+            border: 2px solid #fb7185;
+        }
+
+        .painel-ataque h2 {
+            color: #9f1239;
+            border-bottom-color: #fb7185;
+        }
+
+        .ataque-resumo {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+            margin-top: 12px;
+        }
+
+        .ataque-bloco {
+            background: rgba(255, 255, 255, 0.8);
+            border: 1px solid rgba(244, 114, 182, 0.25);
+            border-radius: 10px;
+            padding: 12px;
+        }
+
+        .ataque-bloco span {
+            display: block;
+        }
+
+        .ataque-label {
+            font-size: 0.8em;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #be123c;
+            margin-bottom: 6px;
+            font-weight: 800;
+        }
+
+        .ataque-valor {
+            font-size: 1.05em;
+            font-weight: 800;
+            color: #4c0519;
+        }
+
+        .botao-ataque {
+            appearance: none;
+            border: 0;
+            border-radius: 12px;
+            padding: 14px 18px;
+            font-size: 1em;
+            font-weight: 800;
+            color: #fff;
+            background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+            box-shadow: 0 12px 24px rgba(153, 27, 27, 0.25);
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .botao-ataque:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 16px 28px rgba(153, 27, 27, 0.28);
+        }
+
+        .botao-ataque:active {
+            transform: translateY(0);
+        }
+
+        .botao-ataque:disabled {
+            opacity: 0.65;
+            cursor: not-allowed;
+        }
+
         @keyframes spin {
             from { transform: rotate(0deg); }
             to { transform: rotate(360deg); }
@@ -397,6 +501,10 @@
             .mineradores-grid {
                 grid-template-columns: 1fr;
             }
+
+            .ataque-resumo {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
@@ -408,6 +516,31 @@
         </div>
 
         <div class="content">
+            <div class="card painel-ataque full-width">
+                <h2>⚔️ Simulação de Ataque 51%</h2>
+                <p>Ativa um ataque de dominância de hashrate no minerador mais forte e aplica bloqueio automático de 3 minutos após 5 blocos seguidos.</p>
+                <div style="margin-top: 14px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+                    <button id="botao-ataque" class="botao-ataque" type="button">Simular ataque 51%</button>
+                    <span class="status-label">Alvo atual: <strong id="ataque-alvo">Nenhum</strong></span>
+                    <span class="status-label">Estado: <strong id="ataque-status">Inativo</strong></span>
+                    <span class="status-label">Timer: <strong id="ataque-timer">--:--</strong></span>
+                </div>
+                <div class="ataque-resumo">
+                    <div class="ataque-bloco">
+                        <span class="ataque-label">Descrição</span>
+                        <span class="ataque-valor">Força um único minerador a dominar a competição até sofrer limitação.</span>
+                    </div>
+                    <div class="ataque-bloco">
+                        <span class="ataque-label">Punição</span>
+                        <span class="ataque-valor">3 minutos sem minerar quando atingir 5 blocos consecutivos.</span>
+                    </div>
+                    <div class="ataque-bloco">
+                        <span class="ataque-label">Objetivo</span>
+                        <span class="ataque-valor">Visualizar a defesa anti-dominação em tempo real.</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- Mineradores Ativos -->
             <div class="card">
                 <h2>🏗️ Mineradores Ativos</h2>
@@ -454,13 +587,22 @@
 
     <script>
         const socket = io();
-        const mineradoresPadrao = ['Minerador-1', 'Minerador-2', 'Minerador-3', 'Minerador-4'];
+        const mineradoresPadrao = ['Minerador-1', 'Minerador-2', 'Minerador-3', 'Minerador-4', 'Minerador-5', 'Minerador-6'];
         let ultimoIndiceAnimado = null;
         let estado = {
             mineradores: {},
             blocos_minerados: [],
-            servidor_conectado: false
+            servidor_conectado: false,
+            ataque: {
+                ativo: false,
+                minerador_alvo: null,
+                tipo: '51%'
+            }
         };
+
+        const botaoAtaque = document.getElementById('botao-ataque');
+
+        botaoAtaque.addEventListener('click', dispararAtaque);
 
         // Conexão WebSocket
         socket.on('connect', function() {
@@ -471,6 +613,7 @@
             console.log('Estado inicial recebido:', data);
             estado = data;
             normalizarMineradores();
+            normalizarAtaque();
             atualizarUI();
         });
 
@@ -490,6 +633,7 @@
             }
             estado.mineradores[data.minerador].blocos_resolvidos += 1;
             normalizarMineradores();
+            normalizarAtaque();
             ultimoIndiceAnimado = data.indice;
             
             atualizarUI();
@@ -507,7 +651,9 @@
 
                 estado.mineradores = dados.mineradores || {};
                 estado.blocos_minerados = dados.blocos_minerados || [];
+                estado.ataque = dados.ataque || estado.ataque || { ativo: false, minerador_alvo: null, tipo: '51%' };
                 normalizarMineradores();
+                normalizarAtaque();
 
                 const ultimo = obterUltimoBloco();
                 if (ultimo && ultimo.indice !== ultimoIndiceAnimado) {
@@ -521,12 +667,21 @@
             }
         }
 
+        function aplicarEstadoServidor(dados) {
+            estado.mineradores = dados.mineradores || estado.mineradores || {};
+            estado.blocos_minerados = dados.blocos_minerados || estado.blocos_minerados || [];
+            estado.ataque = dados.ataque || estado.ataque || { ativo: false, minerador_alvo: null, tipo: '51%' };
+            normalizarMineradores();
+            normalizarAtaque();
+        }
+
         function atualizarUI() {
             atualizarMineradores();
             atualizarPlacar();
             atualizarBlocos();
             atualizarCadeia();
             atualizarStatusServidor();
+            atualizarAtaquePainel();
         }
 
         function normalizarMineradores() {
@@ -535,10 +690,43 @@
                     estado.mineradores[nome] = {
                         nome,
                         blocos_resolvidos: 0,
-                        status: 'ativo'
+                        status: 'ativo',
+                        consecutivos: 0,
+                        punido_ate: 0,
+                        punicao_restante_segundos: 0
                     };
                 }
             });
+        }
+
+        function normalizarAtaque() {
+            if (!estado.ataque) {
+                estado.ataque = {
+                    ativo: false,
+                    minerador_alvo: null,
+                    tipo: '51%'
+                };
+            }
+        }
+
+        function formatarTempo(segundos) {
+            const total = Math.max(0, Math.floor(segundos));
+            const minutos = String(Math.floor(total / 60)).padStart(2, '0');
+            const resto = String(total % 60).padStart(2, '0');
+            return `${minutos}:${resto}`;
+        }
+
+        function segundosPunicao(minerador) {
+            if (!minerador || !minerador.punido_ate) {
+                return 0;
+            }
+
+            const alvo = Number(minerador.punido_ate);
+            if (!Number.isFinite(alvo)) {
+                return Number(minerador.punicao_restante_segundos) || 0;
+            }
+
+            return Math.max(0, Math.ceil(alvo - (Date.now() / 1000)));
         }
 
         function obterUltimoBloco() {
@@ -561,15 +749,28 @@
                 return;
             }
             
-            container.innerHTML = Object.values(estado.mineradores).map(minerador => `
-                <div class="minerador-card ${minerador.status === 'ativo' ? 'ativo' : ''}">
+            container.innerHTML = Object.values(estado.mineradores).map(minerador => {
+                const tempoRestante = segundosPunicao(minerador);
+                const punido = minerador.status === 'punido' && tempoRestante > 0;
+                const dominante = estado.ataque && estado.ataque.minerador_alvo === minerador.nome && estado.ataque.ativo;
+                const classeStatus = punido ? 'punido' : (dominante ? 'dominante' : (minerador.status === 'ativo' ? 'ativo' : ''));
+                const textoStatus = punido ? 'PUNIDO' : (dominante ? 'ALVO DO ATAQUE' : 'ATIVO');
+                const textoTempo = punido ? formatarTempo(tempoRestante) : 'Livre';
+
+                return `
+                <div class="minerador-card ${classeStatus}">
                     <div class="minerador-nome">${minerador.nome}</div>
                     <div class="minerador-stats">
                         <span>Blocos: <strong>${minerador.blocos_resolvidos}</strong></span>
-                        <span class="countdown"></span>
+                        <span class="status-label">${textoStatus}</span>
+                    </div>
+                    <div class="minerador-stats" style="margin-top: 10px;">
+                        <span>Sequência: <strong>${minerador.consecutivos || 0}</strong></span>
+                        <span class="tempo-punicao">${punido ? `⏳ ${textoTempo}` : `🟢 ${textoTempo}`}</span>
                     </div>
                 </div>
-            `).join('');
+            `;
+            }).join('');
         }
 
         function atualizarPlacar() {
@@ -676,6 +877,63 @@
             }
         }
 
+        function atualizarAtaquePainel() {
+            const alvo = document.getElementById('ataque-alvo');
+            const status = document.getElementById('ataque-status');
+            const timer = document.getElementById('ataque-timer');
+
+            if (!estado.ataque || !estado.ataque.ativo) {
+                alvo.textContent = 'Nenhum';
+                status.textContent = 'Inativo';
+                timer.textContent = '--:--';
+                return;
+            }
+
+            alvo.textContent = estado.ataque.minerador_alvo || 'Sem alvo';
+            status.textContent = 'Ativo';
+
+            const mineradorPunido = Object.values(estado.mineradores).find((minerador) => minerador.status === 'punido');
+            if (!mineradorPunido) {
+                timer.textContent = 'Aguardando punição';
+                return;
+            }
+
+            const segundos = segundosPunicao(mineradorPunido);
+            timer.textContent = formatarTempo(segundos);
+        }
+
+        async function dispararAtaque() {
+            botaoAtaque.disabled = true;
+            botaoAtaque.textContent = 'Disparando...';
+
+            try {
+                const resposta = await fetch('/api/ataque', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({})
+                });
+
+                const dados = await resposta.json();
+                if (!resposta.ok || !dados.ok) {
+                    alert(dados.mensagem || 'Falha ao simular o ataque.');
+                    return;
+                }
+
+                if (dados.resultado) {
+                    aplicarEstadoServidor(dados.resultado);
+                }
+                atualizarUI();
+            } catch (erro) {
+                console.error('Falha ao disparar ataque:', erro);
+                alert('Não foi possível acionar o ataque agora.');
+            } finally {
+                botaoAtaque.disabled = false;
+                botaoAtaque.textContent = 'Simular ataque 51%';
+            }
+        }
+
         function mostrarVencedor(minerador, indice) {
             // Efeito visual de vitória
             const cards = document.querySelectorAll('.minerador-card');
@@ -691,6 +949,11 @@
         setInterval(() => {
             socket.emit('ping');
         }, 5000);
+
+        setInterval(() => {
+            atualizarAtaquePainel();
+            atualizarMineradores();
+        }, 1000);
 
         // Fallback: polling periódico para manter o painel atualizado
         setInterval(() => {
