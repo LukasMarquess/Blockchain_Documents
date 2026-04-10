@@ -1,0 +1,6 @@
+cryptography
+kafka-python
+flask
+flask-socketio
+python-socketio
+python-engineio

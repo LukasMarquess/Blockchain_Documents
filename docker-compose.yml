@@ -1,0 +1,107 @@
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    container_name: blockchain-zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: blockchain-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+
+  servidor:
+    build: .
+    container_name: blockchain-servidor
+    depends_on:
+      - kafka
+    environment:
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=5000
+      - KAFKA_BOOTSTRAP=kafka:9092
+    ports:
+      - "5000:5000"
+    command: ["python", "servidor.py"]
+
+  minerador-1:
+    build: .
+    container_name: blockchain-minerador-1
+    depends_on:
+      - servidor
+      - kafka
+    environment:
+      - SERVER_HOST=blockchain-servidor
+      - SERVER_PORT=5000
+      - KAFKA_BOOTSTRAP=kafka:9092
+    command: ["python", "minerador.py", "--id", "Minerador-1"]
+
+  minerador-2:
+    build: .
+    container_name: blockchain-minerador-2
+    depends_on:
+      - servidor
+      - kafka
+    environment:
+      - SERVER_HOST=blockchain-servidor
+      - SERVER_PORT=5000
+      - KAFKA_BOOTSTRAP=kafka:9092
+    command: ["python", "minerador.py", "--id", "Minerador-2"]
+
+  minerador-3:
+    build: .
+    container_name: blockchain-minerador-3
+    depends_on:
+      - servidor
+      - kafka
+    environment:
+      - SERVER_HOST=blockchain-servidor
+      - SERVER_PORT=5000
+      - KAFKA_BOOTSTRAP=kafka:9092
+    command: ["python", "minerador.py", "--id", "Minerador-3"]
+
+  minerador-4:
+    build: .
+    container_name: blockchain-minerador-4
+    depends_on:
+      - servidor
+      - kafka
+    environment:
+      - SERVER_HOST=blockchain-servidor
+      - SERVER_PORT=5000
+      - KAFKA_BOOTSTRAP=kafka:9092
+    command: ["python", "minerador.py", "--id", "Minerador-4"]
+
+  monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile.monitor
+    container_name: blockchain-monitor
+    depends_on:
+      - servidor
+      - kafka
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      SERVER_HOST: blockchain-servidor
+      SERVER_PORT: 5000
+      FLASK_HOST: 0.0.0.0
+      FLASK_PORT: 8080
+    ports:
+      - "8080:8080"
+    command: ["python", "monitor.py"]

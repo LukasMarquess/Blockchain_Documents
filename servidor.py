@@ -3,12 +3,15 @@ import json
 import threading
 import random
 import time
+import os
 from blockchain import Blockchain
 from bloco import Bloco
 from identidade import gerar_chaves, assinar_dados, exportar_chave_publica
 
 class ServidorBlockchain:
     def __init__(self):
+        self.host = os.getenv("SERVER_HOST", "0.0.0.0")
+        self.porta = int(os.getenv("SERVER_PORT", "5000"))
         self.blockchain = Blockchain()
         self.mineradores = []
         self.bloco_atual_resolvido = True # Começa como True para o gerador iniciar
@@ -114,7 +117,7 @@ class ServidorBlockchain:
     def iniciar(self):
         servidor = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         servidor.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        servidor.bind(('localhost', 5000))
+        servidor.bind((self.host, self.porta))
         servidor.listen(10)
 
         threading.Thread(target=self.gerador_de_desafios, daemon=True).start()
@@ -122,6 +125,7 @@ class ServidorBlockchain:
         print("\n" + "="*50)
         print(" SERVIDOR BLOCKCHAIN COM ASSINATURA RSA ")
         print(f" Chave Pública: {self.chave_publica_pem[:50]}...")
+        print(f" Host: {self.host} | Porta: {self.porta}")
         print("="*50)
 
         while True:

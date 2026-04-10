@@ -178,64 +178,87 @@ Gerencia a blockchain, valida blocos e coordena mineradores.
 ## 🚀 Como Executar
 
 ### Pré-requisitos
+- Docker instalado
+- Docker Compose instalado
+
+Este projeto está configurado para execução apenas com Docker Compose.
+
+## 🐳 Como Executar com Docker Compose
+
+Execute o projeto somente com Docker Compose:
+
 ```bash
-# Instalar a biblioteca de criptografia
-pip install cryptography
+docker compose up --build
 ```
 
-### Passo 1: Iniciar o Servidor
-Abra um terminal e execute:
+Depois acesse a interface gráfica em:
+
+```
+http://localhost:8080
+```
+
+Para encerrar tudo:
+
 ```bash
-python servidor.py
+docker compose down
 ```
 
-**Saída esperada:**
-```
-==================================================
- SERVIDOR BLOCKCHAIN COM ASSINATURA RSA 
- Chave Pública: -----BEGIN PUBLIC KEY-----...
-==================================================
-```
+### O que o compose sobe
+- Zookeeper
+- Kafka
+- Servidor blockchain
+- 4 mineradores
+- Monitor web em tempo real
 
-### Passo 2: Iniciar Mineradores
-Em terminais separados, execute (para cada minerador):
-```bash
-# Terminal 1
-python minerador.py
+### Rede interna
+- Servidor: `blockchain-servidor:5000`
+- Kafka: `kafka:9092`
 
-# Terminal 2
-python minerador.py
+---
 
-# Terminal 3
-python minerador.py
+## Interface Gráfica de Monitoramento
+
+O projeto inclui um **monitor web em tempo real** que mostra:
+- **Mineradores ativos** com indicadores visuais
+- **Placar de blocos** minerados por cada minerador
+- **Blocos minerados** com disseminação via Kafka em tempo real
+- **Status de conexão** com servidor e Kafka
+
+### Acessando o Monitor
+
+Quando rodar o Docker Compose, o monitor estará disponível em:
+
 ```
-
-**Saída esperada (minerador):**
-```
-========================================
- MINERADOR CONECTADO E COMPETINDO 
-========================================
-[REDE] Recebido desafio para Bloco 1
-[TRABALHO] Iniciando mineração do Bloco 1...
-[SUCESSO] Bloco 1 resolvido com Nonce 12345!
+http://localhost:8080
 ```
 
-### Exemplo de Execução Completa
-```
-Terminal 1 (Servidor):
-==================================================
-[SISTEMA] Documento Assinado! Disparando Bloco #1...
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-VENCEDOR: ('127.0.0.1', 54321)
-Bloco #1 validado e inserido!
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+### Recursos do Monitor
 
-Terminal 2 (Minerador 1):
-[SUCESSO] Bloco 1 resolvido com Nonce 89456!
+1. **Seção de Mineradores Ativos**
+   - Mostra lista de mineradores conectados
+   - Exibe contador de blocos resolvidos por minerador
+   - Status de atividade com animação em tempo real
 
-Terminal 3 (Minerador 2):
-[CANCELADO] Bloco 1 já foi resolvido. Parando...
-```
+2. **Placar de Blocos**
+   - Ranking dos mineradores por número de blocos resolvidos
+   - Atualização em tempo real via WebSocket
+
+3. **Histórico de Blocos Minerados**
+   - Lista completa dos blocos minerados (mais recentes primeiro)
+   - Exibe qual minerador resolveu cada bloco
+   - Mostra nonce, hash parcial e timestamp
+
+4. **Indicadores Visuais**
+   - Animação quando um bloco é minerado no tópico Kafka
+   - Efeito de pulso em mineradores ativos
+   - Destaque especial quando minerador vence (cor dourada)
+
+### Como o Monitor Funciona Internamente
+
+1. **Conexão Kafka**: O monitor escuta o tópico `blocos_minerados` em tempo real
+2. **WebSocket**: Usa Socket.IO para comunicação bidirecional com o navegador
+3. **Dashboard Reativo**: Interface atualiza instantaneamente quando blocos são minerados
+4. **Disseminação Visual**: Mostra claramente qual minerador conseguiu minerar primeiro
 
 ---
 
@@ -382,10 +405,10 @@ Este projeto é educacional e está disponível para fins de aprendizado.
 R: A dificuldade pode ser ajustada em `blockchain.py` na variável `self.dificuldade`. Aumentar esse valor requer mais poder computacional.
 
 **P: Como aumentar o número de mineradores?**
-R: Simplesmente execute mais instâncias de `python minerador.py` em terminais diferentes.
+R: Duplique serviços no `docker-compose.yml` (por exemplo, `minerador-5`, `minerador-6`) usando IDs diferentes no comando.
 
 **P: O que acontece se o servidor cair?**
-R: Os mineradores tentarão reconectar infinitamente. Reinicie o servidor e eles se reconectarão automaticamente.
+R: Todo o stack é orquestrado pelo Docker Compose. Reinicie com `docker compose up --build`.
 
 **P: Os dados são persistentes?**
 R: Não. Quando o servidor é encerrado, toda a blockchain é perdida. Para persistência, seria necessário implementar um banco de dados.
