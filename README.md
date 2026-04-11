@@ -228,7 +228,6 @@ O projeto inclui um **monitor web em tempo real** que mostra:
 - **Placar de blocos** minerados por cada minerador
 - **Blocos minerados** com disseminação via Kafka em tempo real
 - **Status de conexão** com servidor e Kafka
-- **Punição visual** com destaque em vermelho e timer regressivo
 
 ### Acessando o Monitor
 
