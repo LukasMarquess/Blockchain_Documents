@@ -4,9 +4,8 @@ import socket
 import threading
 import time
 from datetime import datetime
-from urllib import error as urlerror
 from urllib import request as urlrequest
-from flask import Flask, render_template, request
+from flask import Flask, render_template
 from flask_socketio import SocketIO, emit
 
 try:
@@ -31,7 +30,6 @@ estado = {
     "blockchain": [],
     "mineradores": {},
     "blocos_minerados": [],
-    "ataque": {"ativo": False, "minerador_alvo": None, "tipo": "51%"},
     "ultima_atualizacao": datetime.now().isoformat(),
 }
 
@@ -49,24 +47,6 @@ def obter_estado_controle_servidor():
         return {}
 
 
-def enviar_ataque_servidor(minerador=None):
-    corpo = json.dumps({"minerador": minerador}).encode("utf-8")
-    requisicao = urlrequest.Request(
-        _endpoint_controle_servidor("/api/ataque"),
-        data=corpo,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-
-    try:
-        with urlrequest.urlopen(requisicao, timeout=5) as resposta:
-            return resposta.status, json.loads(resposta.read().decode("utf-8"))
-    except urlerror.HTTPError as erro:
-        corpo_erro = erro.read().decode("utf-8") if erro.fp else ""
-        payload = json.loads(corpo_erro) if corpo_erro else {"ok": False, "mensagem": str(erro)}
-        return erro.code, payload
-
-
 def mesclar_mineradores(com_estado_controle):
     mineradores = dict(estado["mineradores"])
     for minerador_id, dados_controle in (com_estado_controle.get("mineradores") or {}).items():
@@ -80,7 +60,6 @@ def mesclar_mineradores(com_estado_controle):
             "punicao_restante_segundos": dados_controle.get(
                 "punicao_restante_segundos", atual.get("punicao_restante_segundos", 0)
             ),
-            "ataque_alvo": dados_controle.get("ataque_alvo", atual.get("ataque_alvo", False)),
         }
     return mineradores
 
@@ -193,7 +172,6 @@ def escutar_blocos_kafka():
                         estado["mineradores"][minerador_id].get("punicao_restante_segundos", 0),
                     )
                     estado["ultima_atualizacao"] = timestamp
-                    estado["ataque"] = controle_servidor.get("ataque", estado.get("ataque", {}))
 
                     # Emitir evento para todos os clientes conectados
                     socketio.emit(
@@ -229,34 +207,14 @@ def api_estado():
     controle_servidor = obter_estado_controle_servidor()
     mineradores = mesclar_mineradores(controle_servidor)
     mesclar_blocos(controle_servidor)
-    estado["ataque"] = controle_servidor.get("ataque", estado.get("ataque", {}))
+    servidor_conectado = conectar_servidor()
     return {
         "blockchain": estado["blockchain"],
         "mineradores": mineradores,
         "blocos_minerados": estado["blocos_minerados"],
-        "ataque": estado["ataque"],
+        "servidor_conectado": servidor_conectado,
         "ultima_atualizacao": estado["ultima_atualizacao"],
     }
-
-
-@app.route("/api/ataque", methods=["POST"])
-def api_ataque():
-    """Dispara a simulação de ataque 51% no servidor."""
-    dados = request.get_json(silent=True) or {}
-    try:
-        codigo, resultado = enviar_ataque_servidor(dados.get("minerador"))
-        estado_servidor = obter_estado_controle_servidor()
-        estado["ataque"] = estado_servidor.get("ataque", estado.get("ataque", {}))
-        estado["mineradores"] = mesclar_mineradores(estado_servidor)
-        mesclar_blocos(estado_servidor)
-        return {
-            "ok": resultado.get("ok", codigo < 400),
-            "resultado": resultado,
-            "ataque": estado["ataque"],
-            "mineradores": estado["mineradores"],
-        }, codigo
-    except urlerror.URLError as erro:
-        return {"ok": False, "mensagem": f"Falha ao acionar o ataque: {erro}"}, 502
 
 
 @socketio.on("connect")
@@ -264,14 +222,12 @@ def handle_connect():
     """Evento quando cliente se conecta."""
     print(f"[MONITOR] Cliente conectado")
     controle_servidor = obter_estado_controle_servidor()
-    estado["ataque"] = controle_servidor.get("ataque", estado.get("ataque", {}))
     mesclar_blocos(controle_servidor)
     emit(
         "estado_inicial",
         {
             "mineradores": mesclar_mineradores(controle_servidor),
             "blocos_minerados": estado["blocos_minerados"],
-            "ataque": estado["ataque"],
             "servidor_conectado": conectar_servidor(),
         },
     )

@@ -12,6 +12,8 @@ Um projeto educacional que implementa uma blockchain funcional com um sistema de
 - [Módulos do Projeto](#módulos-do-projeto)
 - [Como Executar](#como-executar)
 - [Fluxo de Funcionamento](#fluxo-de-funcionamento)
+- [Validação dos Documentos e Envio](#validação-dos-documentos-e-envio)
+- [Benefícios da Blockchain para Documentos](#benefícios-da-blockchain-para-documentos)
 - [Recursos Principais](#recursos-principais)
 
 ---
@@ -168,15 +170,14 @@ Coordena os mineradores e aplica a regra da maior cadeia.
 - Aguarda um pool mínimo de mineradores conectados antes de iniciar desafios
 - Usa a maior cadeia reportada pelos mineradores como referência válida
 - Não precisa armazenar a cadeia completa de blocos
-- Assina digitalmente cada documento
-- Disponibiliza API de controle para simulação de ataque 51%
+- Assina digitalmente cada documento com a chave da entidade emissora
 - Gerencia threads para cada minerador
 
 **Componentes:**
 1. **Gerador de Desafios**: Cria novos blocos periodicamente
 2. **Pool de Mineradores**: Gerencia múltiplas conexões simultâneas
 3. **Consenso de Maior Cadeia**: Atualiza a referência com base nos estados enviados pelos mineradores
-4. **Sistema de Assinatura**: Assina cada documento com chave privada RSA
+4. **Sistema de Assinatura**: Usa chaves privadas exclusivas por entidade emissora
 
 ---
 
@@ -229,7 +230,6 @@ O projeto inclui um **monitor web em tempo real** que mostra:
 - **Placar de blocos** minerados por cada minerador
 - **Blocos minerados** com disseminação via Kafka em tempo real
 - **Status de conexão** com servidor e Kafka
-- **Simulação de ataque 51%** por botão
 - **Punição visual** com destaque em vermelho e timer regressivo
 
 ### Acessando o Monitor
@@ -261,12 +261,6 @@ http://localhost:8080
    - Animação de disseminação do minerador vencedor para os demais mineradores
    - Efeito de pulso em mineradores ativos e destaque visual do vencedor
 
-5. **Ataque 51% e Defesa**
-   - Botão para simular ataque de dominância de hashrate
-   - Quando ativo, o desafio pode ser direcionado ao minerador-alvo
-   - Se um minerador vencer **5 blocos consecutivos**, recebe punição de **3 minutos sem minerar**
-   - O monitor mostra o minerador punido em vermelho com timer em tempo real
-
 ### Como o Monitor Funciona Internamente
 
 1. **Conexão Kafka**: O monitor escuta o tópico `blocos_minerados` em tempo real
@@ -283,7 +277,7 @@ http://localhost:8080
 
 ```
 1. INICIALIZAÇÃO
-   ├─ Servidor inicia e gera par de chaves RSA
+   ├─ Servidor inicia e gera pares de chaves RSA para emissores oficiais
    ├─ Cadeias locais dos mineradores começam no bloco Gênesis
    └─ Gerador de desafios inicia (thread daemon)
 
@@ -297,9 +291,9 @@ http://localhost:8080
 
 3. GERAÇÃO DE DESAFIO (a cada 5 segundos)
    ├─ Servidor aguarda o mínimo de 6 mineradores conectados
-   ├─ Servidor seleciona autor e documento aleatório
+   ├─ Servidor seleciona entidade emissora e documento aleatório
    ├─ Gera hash SHA-256 simulado
-   ├─ Assina digitalmente com RSA (chave privada)
+   ├─ Assina digitalmente com RSA (chave privada da entidade)
    ├─ Encapsula em JSON
    └─ Envia para todos os mineradores
 
@@ -326,6 +320,89 @@ http://localhost:8080
 
 ---
 
+## ✅ Validação dos Documentos e Envio
+
+Nesta simulação, os documentos são considerados válidos quando passam pelo emissor oficial e chegam assinados digitalmente para a etapa de mineração.
+
+### Órgãos emissores autorizados
+
+- Cartório Lucena
+- Cartório Marques
+- Cartório Barreto
+- Segurança Pública do RN
+- Governo Federal
+
+Cada órgão possui seu próprio par de chaves RSA.
+
+- **Chave privada do órgão**: usada para assinar o hash do documento.
+- **Chave pública do órgão**: enviada no payload para permitir verificação da assinatura.
+
+### Passo a passo do fluxo
+
+1. O servidor seleciona um órgão emissor autorizado.
+2. O servidor gera os dados do documento (tipo, autor, hash do arquivo).
+3. O órgão emissor assina o hash do documento com sua chave privada exclusiva.
+4. O payload do bloco inclui:
+   - Tipo de documento
+   - Autor do documento
+   - Órgão emissor
+   - Hash do arquivo
+   - Assinatura digital do emissor
+   - Chave pública do emissor
+5. Esse payload é enviado como desafio para os mineradores.
+6. O primeiro minerador que resolve o PoW envia o bloco ao servidor.
+7. O servidor valida o bloco recebido e atualiza a cadeia de referência pela regra da maior cadeia para atualizar o monitor blockchain na página HTML, apenas para fins de ver a cadeia crescendo.
+
+### Resultado prático
+
+- O documento entra na blockchain com rastreabilidade de origem (qual órgão assinou).
+- A assinatura digital protege autenticidade e integridade dos dados.
+- Sem a chave privada correta do órgão, não é possível gerar assinatura legítima.
+
+---
+
+## 🌍 Benefícios da Blockchain para Documentos
+
+Aplicar blockchain ao registro de imóveis e documentos resolve problemas clássicos de confiança, fraude e burocracia. No contexto deste projeto (órgão emissor assinando documento com RSA e envio para mineração), os principais benefícios são:
+
+### 1. Imutabilidade e prevenção de fraudes
+
+Após o registro em bloco validado, qualquer alteração no documento muda o hash e invalida o encadeamento da cadeia.
+
+- Isso dificulta adulteração de dados históricos de propriedade.
+- Uma tentativa de alterar um bloco antigo quebra a consistência esperada pelos nós.
+
+### 2. Autenticidade e não-repúdio com RSA
+
+Cada órgão emissor assina o hash do documento com sua chave privada exclusiva.
+
+- A validação é feita com a chave pública correspondente.
+- O emissor não pode negar a emissão legítima do documento assinado.
+- Terceiros não conseguem forjar assinatura sem a chave privada do órgão.
+
+### 3. Eliminação de ponto único de falha
+
+Com a rede distribuída de mineradores e nós, o histórico não depende de um único servidor local.
+
+- Quedas pontuais de um componente não apagam o histórico já disseminado.
+- O sistema mantém maior resiliência operacional comparado a um registro centralizado único.
+
+### 4. Transparência e auditoria rápida
+
+Com os dados de bloco (ou hashes) e assinaturas disponíveis, a validação pode ser automatizada.
+
+- Scripts e sistemas conseguem checar integridade e assinatura em segundos.
+- Auditorias ficam mais objetivas, rastreáveis e com menor dependência de validação manual.
+
+### 5. Prevenção de conflito de estado (ex.: venda dupla)
+
+O consenso e a ordem de inclusão dos blocos reduzem conflitos de registro simultâneo sobre o mesmo ativo.
+
+- A transação confirmada primeiro passa a representar o estado válido da rede.
+- Tentativas conflitantes posteriores podem ser detectadas e rejeitadas pelas regras de validação.
+
+---
+
 ## ⚙️ Recursos Principais
 
 ### 1. **Prova de Trabalho (Proof of Work)**
@@ -334,7 +411,8 @@ http://localhost:8080
 - Diminuir dificuldade = blocos mais rápidos
 
 ### 2. **Assinatura Digital RSA**
-- Cada documento é assinado com chave privada do servidor
+- Cada documento é assinado com chave privada exclusiva da entidade emissora
+- Entidades emissoras: Cartório Lucena, Cartório Marques, Cartório Barreto, Segurança Pública do RN e Governo Federal
 - Chave pública incluída no bloco para verificação
 - Impossível forjar sem a chave privada
 
@@ -348,24 +426,13 @@ http://localhost:8080
 - Cada minerador mantém sua cadeia local e envia status (`cadeia_tamanho` e `ultimo_hash`)
 - A cadeia com maior comprimento é considerada válida
 
-### 5. **Defesa Anti-Dominância (5 em sequência)**
-- Se o mesmo minerador vencer 5 blocos seguidos, ele é bloqueado por 3 minutos
-- Durante o bloqueio, o servidor ignora vitórias desse minerador
-- A UI mostra o status de punição com timer regressivo
-
-### 6. **Validação de Integridade**
+### 5. **Validação de Integridade**
 ```python
 # Cada minerador valida:
 ✓ Se o hash de cada bloco está correto
 ✓ Se cada bloco aponta para o anterior correto
 ✓ Se a cadeia não foi modificada
 ```
-
-### 7. **Thread-Safety**
-- Lock mutex (`threading.Lock`) garante consistência
-- Previne condições de corrida
-- Apenas uma transação modificando blockchain por vez
-
 ---
 
 ## 📊 Dados de um Bloco
@@ -378,7 +445,8 @@ Exemplo de estrutura JSON de um bloco:
   "timestamp": 1684756234.5678,
   "dados": {
     "documento": "Contrato_Social",
-    "autor_nome": "Lukas",
+      "entidade_emissora": "Cartório Lucena",
+      "autor_nome": "Cartório Lucena",
     "hash_arquivo": "sha256_a1b2c3d4e5f6g7h8",
     "assinatura_emissor": "0x1a2b3c4d5e6f...",
     "chave_publica_emissor": "-----BEGIN PUBLIC KEY-----..."

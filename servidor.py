@@ -6,7 +6,7 @@ import time
 import os
 import hashlib
 from datetime import datetime
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify
 from identidade import gerar_chaves, assinar_dados, exportar_chave_publica
 
 servidor_app = Flask(__name__)
@@ -31,13 +31,27 @@ class ServidorBlockchain:
 
         self.bloco_atual_resolvido = True
         self.desafio_atual = None
-        self.ataque_ativo = False
-        self.minerador_ataque = None
         self._aguardo_mineradores_logado = False
         self.lock = threading.Lock()
 
-        self.chave_privada, self.chave_publica = gerar_chaves()
-        self.chave_publica_pem = exportar_chave_publica(self.chave_publica)
+        self.entidades_emissoras = self._inicializar_entidades_emissoras()
+
+    def _inicializar_entidades_emissoras(self):
+        entidades = [
+            "Cartório Lucena",
+            "Cartório Marques",
+            "Cartório Barreto",
+            "Segurança Pública do RN",
+            "Governo Federal",
+        ]
+        emissoras = {}
+        for nome in entidades:
+            chave_privada, chave_publica = gerar_chaves()
+            emissoras[nome] = {
+                "chave_privada": chave_privada,
+                "chave_publica_pem": exportar_chave_publica(chave_publica),
+            }
+        return emissoras
 
     def _liberar_punicoes_expiradas(self):
         agora = time.time()
@@ -46,25 +60,6 @@ class ServidorBlockchain:
             if punido_ate and punido_ate <= agora:
                 dados["punido_ate"] = 0
                 dados["status"] = "ativo"
-
-    def _escolher_minerador_ataque(self):
-        candidatos = [
-            (minerador_id, dados)
-            for minerador_id, dados in self.mineradores.items()
-            if dados.get("conexao")
-        ]
-        if not candidatos:
-            return None
-
-        candidatos.sort(
-            key=lambda item: (
-                item[1].get("blocos_resolvidos", 0),
-                item[1].get("consecutivos", 0),
-                item[0],
-            ),
-            reverse=True,
-        )
-        return candidatos[0][0]
 
     def _atualizar_referencia_maior_cadeia(self):
         maior = {
@@ -113,7 +108,6 @@ class ServidorBlockchain:
             "consecutivos": dados.get("consecutivos", 0),
             "punido_ate": punido_ate,
             "punicao_restante_segundos": restante,
-            "ataque_alvo": minerador_id == self.minerador_ataque,
             "cadeia_tamanho": int(dados.get("cadeia_tamanho", 1)),
             "ultimo_hash": dados.get("ultimo_hash", "GENESIS"),
         }
@@ -127,43 +121,11 @@ class ServidorBlockchain:
                     minerador_id: self._estado_minerador_publico(minerador_id, dados)
                     for minerador_id, dados in self.mineradores.items()
                 },
-                "ataque": {
-                    "ativo": self.ataque_ativo,
-                    "minerador_alvo": self.minerador_ataque,
-                    "tipo": "51%",
-                },
                 "blocos_minerados": list(self.historico_blocos),
                 "cadeia_referencia": dict(self.cadeia_referencia),
                 "bloco_atual_resolvido": self.bloco_atual_resolvido,
                 "desafio_atual": dict(self.desafio_atual) if self.desafio_atual else None,
                 "mineradores_conectados": len([d for d in self.mineradores.values() if d.get("conexao")]),
-            }
-
-    def simular_ataque(self, minerador_alvo=None):
-        with self.lock:
-            self._liberar_punicoes_expiradas()
-
-            alvo = minerador_alvo if minerador_alvo in self.mineradores else None
-            if alvo is None:
-                alvo = self._escolher_minerador_ataque()
-
-            if alvo is None:
-                return {"ok": False, "mensagem": "Nenhum minerador conectado para simular o ataque."}
-
-            self.ataque_ativo = True
-            self.minerador_ataque = alvo
-            return {
-                "ok": True,
-                "mensagem": f"Ataque 51% ativado em {alvo}.",
-                "ataque": {
-                    "ativo": self.ataque_ativo,
-                    "minerador_alvo": self.minerador_ataque,
-                    "tipo": "51%",
-                },
-                "mineradores": {
-                    minerador_id: self._estado_minerador_publico(minerador_id, dados)
-                    for minerador_id, dados in self.mineradores.items()
-                },
             }
 
     def registrar_minerador(self, conexao, endereco, minerador_id):
@@ -192,8 +154,6 @@ class ServidorBlockchain:
             dados = self.mineradores.pop(minerador_id, None)
             if dados:
                 print(f"[CONEXÃO] Minerador removido: {minerador_id}")
-                if self.minerador_ataque == minerador_id:
-                    self.minerador_ataque = None
                 self._atualizar_referencia_maior_cadeia()
 
     def atualizar_status_cadeia(self, minerador_id, resposta):
@@ -328,8 +288,27 @@ class ServidorBlockchain:
             print("!" * 50)
 
     def gerador_de_desafios(self):
-        nomes = ["Lukas", "Maria", "Carlos", "Ana", "Bruno", "Faculdade_TI"]
-        docs = ["Contrato_Social", "Escritura_Terreno", "Diploma_Digital", "Nota_Fiscal"]
+        emissores = list(self.entidades_emissoras.keys())
+        autores_documentos = [
+            "Lucas Marques",
+            "Naruto Uzumaki",
+            "Ana Clara Souza",
+            "Maria Eduarda Lima",
+            "Joao Pedro Santos",
+            "Carla Beatriz Oliveira",
+            "Bruno Henrique Costa",
+            "Fernanda Alves Pereira",
+        ]
+        docs = [
+            "Contrato_Social",
+            "Escritura_Terreno",
+            "Diploma_Digital",
+            "Nota_Fiscal",
+            "CPF",
+            "Certidao_de_Nascimento",
+            "Certidao_de_Divorcio",
+            "Certidao_de_Casamento",
+        ]
 
         while True:
             time.sleep(5)
@@ -360,17 +339,20 @@ class ServidorBlockchain:
                 proximo_indice = int(self.cadeia_referencia.get("tamanho", 1))
                 hash_anterior = self.cadeia_referencia.get("ultimo_hash", "GENESIS")
 
-                autor = random.choice(nomes)
+                autor = random.choice(autores_documentos)
+                emissor = random.choice(emissores)
                 tipo = random.choice(docs)
                 hash_fake = f"sha256_{random.getrandbits(64):016x}"
-                assinatura_digital = assinar_dados(self.chave_privada, hash_fake)
+                dados_emissor = self.entidades_emissoras[emissor]
+                assinatura_digital = assinar_dados(dados_emissor["chave_privada"], hash_fake)
 
                 dados_payload = {
                     "documento": tipo,
+                    "entidade_emissora": emissor,
                     "autor_nome": autor,
                     "hash_arquivo": hash_fake,
                     "assinatura_emissor": assinatura_digital,
-                    "chave_publica_emissor": self.chave_publica_pem,
+                    "chave_publica_emissor": dados_emissor["chave_publica_pem"],
                 }
 
                 tarefa = {
@@ -383,11 +365,7 @@ class ServidorBlockchain:
                 self.bloco_atual_resolvido = False
                 self.desafio_atual = dict(tarefa)
                 mensagem = (json.dumps(tarefa) + "\n").encode()
-
-                if self.ataque_ativo and self.minerador_ataque in mineradores_ativos:
-                    destinatarios = [self.minerador_ataque]
-                else:
-                    destinatarios = list(mineradores_ativos.keys())
+                destinatarios = list(mineradores_ativos.keys())
 
                 print(
                     f"\n[SISTEMA] Documento Assinado! Disparando Bloco #{proximo_indice} "
@@ -425,7 +403,9 @@ class ServidorBlockchain:
 
         print("\n" + "=" * 50)
         print(" SERVIDOR BLOCKCHAIN COM REGRA DA MAIOR CADEIA ")
-        print(f" Chave Pública: {self.chave_publica_pem[:50]}...")
+        print(" Emissores autorizados:")
+        for nome in self.entidades_emissoras.keys():
+            print(f"  - {nome}")
         print(f" Host: {self.host} | Porta: {self.porta} | Controle HTTP: {self.porta_controle}")
         print("=" * 50)
 
@@ -440,17 +420,6 @@ def api_estado_controle():
     if servidor_instancia is None:
         return jsonify({"erro": "Servidor ainda inicializando."}), 503
     return jsonify(servidor_instancia.estado_publico())
-
-
-@servidor_app.route("/api/ataque", methods=["POST"])
-def api_simular_ataque():
-    if servidor_instancia is None:
-        return jsonify({"ok": False, "mensagem": "Servidor ainda inicializando."}), 503
-
-    dados = request.get_json(silent=True) or {}
-    resultado = servidor_instancia.simular_ataque(dados.get("minerador"))
-    codigo = 200 if resultado.get("ok") else 400
-    return jsonify(resultado), codigo
 
 
 if __name__ == "__main__":
