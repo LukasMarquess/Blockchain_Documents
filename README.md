@@ -478,19 +478,3 @@ Exemplo de estrutura JSON de um bloco:
 **Autores**: Diego Rabelo, Lucas Marques e Nilton Barreto  
 **Professor**: Eduardo Galvão Lucena  
 **Disciplina**: Sistemas Distribuídos - DCA3704
-
----
-
-## ❓ FAQ
-
-**P: Por que o minerador às vezes não consegue resolver um bloco?**
-R: A dificuldade é definida no servidor (variável de ambiente `DIFFICULDADE`). Aumentar esse valor requer mais poder computacional.
-
-**P: Como aumentar o número de mineradores?**
-R: Duplique serviços no `docker-compose.yml` (por exemplo, `minerador-5`, `minerador-6`) usando IDs diferentes no comando.
-
-**P: Os dados são persistentes?**
-R: Não. As cadeias locais dos mineradores e o estado em memória do servidor são perdidos quando os containers param. Para persistência, seria necessário implementar armazenamento durável.
-
-**P: Como verificar se um documento é legítimo?**
-R: Você pode verificar a assinatura RSA usando a chave pública armazenada no bloco.
