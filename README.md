@@ -37,20 +37,18 @@ O objetivo principal é demonstrar como documentos podem ser registrados de form
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│         SERVIDOR BLOCKCHAIN (servidor.py)          │
-│  • Coordena a regra da maior cadeia                 │
-│  • Gera desafios de mineração                       │
-│  • Assinatura digital RSA                           │
-│  • Aceita blocos com base no estado reportado       │
+│         SERVIDOR BLOCKCHAIN (servidor.py)           │
+│  • Simula os orgãos emissores                       │
+│  • Envia os blocos para serem minerados             │
+│  • Atualiza a interface gráfica                     │
 └─────────────────────────────────────────────────────┘
           ▲                  ▲                  ▲
           │                  │                  │
-    TCP/IP Port 5000    TCP/IP Port 5000   TCP/IP Port 5000
+          |                  |                  |
           │                  │                  │
 ┌─────────────────────┐ ┌─────────────────┐ ┌─────────────────┐
 │ MINERADOR 1         │ │ MINERADOR 2     │ │ MINERADOR N     │
 │ (minerador.py)      │ │ (minerador.py)  │ │ (minerador.py)  │
-│ • Prova de Trabalho │ │ • Competição    │ │ • Threads       │
 └─────────────────────┘ └─────────────────┘ └─────────────────┘
 ```
 
