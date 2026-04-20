@@ -35,21 +35,8 @@ O objetivo principal é demonstrar como documentos podem ser registrados de form
 
 ## 🏗️ Arquitetura do Sistema
 
-```
-┌─────────────────────────────────────────────────────┐
-│         SERVIDOR BLOCKCHAIN (servidor.py)           │
-│  • Simula os orgãos emissores                       │
-│  • Envia os blocos para serem minerados             │
-│  • Atualiza a interface gráfica                     │
-└─────────────────────────────────────────────────────┘
-          ▲                  ▲                  ▲
-          │                  │                  │
-          |                  |                  |
-          │                  │                  │
-┌─────────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-│ MINERADOR 1         │ │ MINERADOR 2     │ │ MINERADOR N     │
-│ (minerador.py)      │ │ (minerador.py)  │ │ (minerador.py)  │
-└─────────────────────┘ └─────────────────┘ └─────────────────┘
+[![](https://mermaid.ink/img/pako:eNqdlF1u2kAQx68y2ihSIvFpBwMWQnKAKpELiaDqQ-s-rO0xrGJ70e4635F6lbQPPUCPwE16kq7BEJKgJip-2V3299-Z-Y_mjgQ8RGKTqaDzGRx_8lLQv_196GPEUpaGHLiEdPFbQqgXQ5aioCEXKAETYGrxGLOAr6hh_atHOqzb8bvD09Fg7PTPxlDvVH19Iqrdg2QNV-Y3h50q63rkW0EaO0jjXeRoBzl6i9yVZZ6kzhFcGl1QOBiilHSKcCz4BYpDCHgCPhchlUCFwJCnIdWblZJ7sA7COXd6JwNwnQ-u8xTFC7FVHIf_jmOC4pLpwF_XebJJeTIYfz7NMz7-eNZzeyfO6VbqshBYZj7TJ3--_4AJS7KY5p5yMV385LmNTMrc0CWV3znPfP0YBT_mQW5-UZPN_47KaMxuKVBgqUIR0QBhKhaPkaZe17jHUwwULVppu4NoobxuHyhXyt17nZpGJE-wWkSSa96Du-6V910bvXltZ4SF__TJgMLijVyfSSWYn7HqGAP0EQaXmCouV7qTLd2BVCwv1OKXrjTMqaAQolQ0oAK2DYZndZDqJkaYQMTi2N6L2vlX0k_q1rH3TNMs1uUrFqqZbcyvSwqvVVlbMk3tGCO1LeMWMmhFZhRtZGo1ywqCV0rbpLajiGCLsyzrOVR_ARn_A43eCZGSnlMsJLYSGZZIgiKh-Zbc5XIeUTNM0CO2XoYY0SxWHvHSB43NafqF82RNCp5NZ8SOaCz1LpuHVGGfUT0Ek82pwDRE0eNZqohttNtLEWLfkWtiNxuVeqtp1IyjhmnVTaNVIjfEblfMhmEaRqPZOjJr9ab1UCK3y1drlVazUSIYMsXFcDVxl4P34S899srm?type=png)](https://mermaid.live/edit#pako:eNqdlF1u2kAQx68y2ihSIvFpBwMWQnKAKpELiaDqQ-s-rO0xrGJ70e4635F6lbQPPUCPwE16kq7BEJKgJip-2V3299-Z-Y_mjgQ8RGKTqaDzGRx_8lLQv_196GPEUpaGHLiEdPFbQqgXQ5aioCEXKAETYGrxGLOAr6hh_atHOqzb8bvD09Fg7PTPxlDvVH19Iqrdg2QNV-Y3h50q63rkW0EaO0jjXeRoBzl6i9yVZZ6kzhFcGl1QOBiilHSKcCz4BYpDCHgCPhchlUCFwJCnIdWblZJ7sA7COXd6JwNwnQ-u8xTFC7FVHIf_jmOC4pLpwF_XebJJeTIYfz7NMz7-eNZzeyfO6VbqshBYZj7TJ3--_4AJS7KY5p5yMV385LmNTMrc0CWV3znPfP0YBT_mQW5-UZPN_47KaMxuKVBgqUIR0QBhKhaPkaZe17jHUwwULVppu4NoobxuHyhXyt17nZpGJE-wWkSSa96Du-6V910bvXltZ4SF__TJgMLijVyfSSWYn7HqGAP0EQaXmCouV7qTLd2BVCwv1OKXrjTMqaAQolQ0oAK2DYZndZDqJkaYQMTi2N6L2vlX0k_q1rH3TNMs1uUrFqqZbcyvSwqvVVlbMk3tGCO1LeMWMmhFZhRtZGo1ywqCV0rbpLajiGCLsyzrOVR_ARn_A43eCZGSnlMsJLYSGZZIgiKh-Zbc5XIeUTNM0CO2XoYY0SxWHvHSB43NafqF82RNCp5NZ8SOaCz1LpuHVGGfUT0Ek82pwDRE0eNZqohttNtLEWLfkWtiNxuVeqtp1IyjhmnVTaNVIjfEblfMhmEaRqPZOjJr9ab1UCK3y1drlVazUSIYMsXFcDVxl4P34S899srm)
+
 ```
 
 ---
